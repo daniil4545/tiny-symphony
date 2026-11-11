@@ -1,0 +1,110 @@
+version: "2"
+
+# Strict Go template: every linter except style ones and those that fight ~/.claude/rules/.
+# Why each is off: viking://resources/knowledge/research/self-projects/research_notes/claude-docs-research/static-analysis-2026-10-22.
+linters:
+  default: all
+  disable:
+    # layout: blank lines, line and name length
+    - wsl
+    - wsl_v5
+    - nlreturn
+    - lll
+    - varnamelen
+    - tagalign
+    - dogsled
+    - funcorder
+    - embeddedstructfieldcheck
+    - inamedparam
+    - nonamedreturns
+    - noinlineerr
+    # demand doc comments, which fights the comment rule of code.md
+    - godot
+    - godoclint
+    - godox
+    # all struct fields and magic numbers: noise without a bug class
+    - exhaustruct
+    - exhaustruct_v5
+    - mnd
+    - gochecknoglobals
+    # need a per-project list or fight external APIs
+    - depguard
+    - forbidigo
+    - tagliatelle
+    - ireturn
+    - gosmopolitan
+    - err113
+    # test parallelism and test packages are a project decision
+    - paralleltest
+    - tparallel
+    - testpackage
+    # gocognit measures complexity; string repeats and prealloc belong to the optimize skill
+    - cyclop
+    - gocyclo
+    - maintidx
+    - goconst
+    - prealloc
+  settings:
+    funlen:
+      lines: 100
+      statements: -1
+    nestif:
+      min-complexity: 4
+    gocognit:
+      min-complexity: 20
+    dupl:
+      threshold: 100
+    exhaustive:
+      default-signifies-exhaustive: true
+    # a suppression names one linter and gives the reason
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    # bug rules only: the exported rule demands doc comments
+    revive:
+      rules:
+        - name: context-as-argument
+        - name: unused-parameter
+        - name: redefines-builtin-id
+        - name: unexported-return
+        - name: time-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: indent-error-flow
+        - name: superfluous-else
+        - name: unreachable-code
+        - name: var-declaration
+        - name: increment-decrement
+        - name: range
+        - name: receiver-naming
+    staticcheck:
+      checks:
+        - all
+        # ST checks doc comment form and names, which fights the comment rule
+        - -ST1000
+        - -ST1003
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        - -ST1023
+  exclusions:
+    rules:
+      # table-driven tests are long, not complex
+      - path: _test\.go
+        linters:
+          - funlen
+          - gocognit
+          - nestif
+          - dupl
+          - errcheck
+          - gosec
+          - wrapcheck
+          - contextcheck
+          - forcetypeassert
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports

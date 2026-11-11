@@ -1,0 +1,46 @@
+# CI of a Go project (~/.claude/docs/git.md, section 8): copy to .github/workflows/ci.yml.
+# A PR into dev runs pr-check, a PR into main and a push to dev or main run ci-check; task branches get no run.
+name: ci
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Full history: pr-size and test-guard read the merge base with the target branch.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0
+          install-only: true
+      # uvx and npx run the linters of scripts/lint-files.sh.
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: pr-check
+        if: github.event_name == 'pull_request' && github.base_ref == 'dev'
+        env:
+          BASE: origin/dev
+        run: make pr-check
+      - name: ci-check
+        if: github.event_name == 'push' || github.base_ref == 'main'
+        env:
+          BASE: origin/${{ github.base_ref || 'main' }}
+        run: make ci-check
