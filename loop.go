@@ -52,6 +52,7 @@ type sched struct {
 	failed               int
 	tries                map[string]*tries
 	backoff              []time.Duration
+	trackerPause         time.Duration
 	stopping             bool
 }
 
@@ -60,7 +61,7 @@ func newSched(cfg *Config, configDir string, bl *Backlog, log *slog.Logger) *sch
 		cfg: cfg, configDir: configDir, bl: bl, log: log,
 		poll:    time.Duration(cfg.PollSeconds) * time.Second,
 		timeout: time.Duration(cfg.RunTimeoutMinutes) * time.Minute,
-		grace:   10 * time.Second,
+		grace:   10 * time.Second, trackerPause: 2 * time.Second,
 		running: map[string]*active{}, done: make(chan outcome),
 		tries: map[string]*tries{}, backoff: []time.Duration{time.Minute, 5 * time.Minute, 15 * time.Minute},
 	}
@@ -150,11 +151,14 @@ func (s *sched) finish(ctx context.Context, o outcome) {
 	delete(s.running, o.id)
 	switch {
 	case o.err == nil:
-		delete(s.tries, o.id)
+		s.clearTries(o.id)
 	case errors.Is(o.err, errMoved):
 		s.log.Info("run stopped", "task", o.id, "outcome", "moved", "reason", "status changed, no attempt counted")
 	case s.stopping:
 		s.log.Info("run stopped", "task", o.id, "outcome", "shutdown")
+	case errors.Is(o.err, errTracker):
+		s.log.Error("tracker failed, no attempt counted", "task", o.id, "outcome", "tracker", "err", o.err)
+		s.failed++
 	default:
 		s.log.Error("run failed", "task", o.id, "outcome", "failed", "err", o.err)
 		s.failed++
