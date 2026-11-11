@@ -79,6 +79,30 @@ func TestPrepareWorkspace(t *testing.T) {
 	}
 }
 
+// spec: Loop
+func TestWorkspaceIsFoundByIdNotTitle(t *testing.T) {
+	repo, root := toyRepo(t), t.TempDir()
+	dir, branch, err := prepareWorkspace(t.Context(), root, repo, Task{ID: "T-1", Title: "Old title"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustRun(t, dir, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "--allow-empty", "-m", "work")
+	dir10, _, err := prepareWorkspace(t.Context(), root, repo, Task{ID: "T-10", Title: "Other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir2, branch2, err := prepareWorkspace(t.Context(), root, repo, Task{ID: "T-1", Title: "A human renamed it"})
+	if err != nil || dir2 != dir || branch2 != branch || dir10 == dir {
+		t.Fatalf("%s %s %v, want %s %s", dir2, branch2, err, dir, branch)
+	}
+	if findWorkspace(root, "T-1") != dir || findWorkspace(root, "T-10") != dir10 || findWorkspace(root, "T-100") != "" {
+		t.Fatal("T-1, T-10 and T-100 must not be mixed up")
+	}
+	if got := mustRun(t, repo, "branch", "--format=%(refname:short)"); strings.Contains(got, "renamed") {
+		t.Fatalf("a branch was made from the new title: %s", got)
+	}
+}
+
 func TestPrepareWorkspaceReusesExistingBranch(t *testing.T) {
 	repo, root := toyRepo(t), t.TempDir()
 	mustRun(t, repo, "branch", "T-1-do-it")

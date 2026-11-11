@@ -16,14 +16,29 @@ const stateDir = ".tiny-symphony"
 
 var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
 
-// branchName is T-<N>-<slug>; the id is made path-safe so the branch can name a directory.
+// pathID is the task id made path-safe, so it can start a branch and a directory name.
+func pathID(id string) string {
+	id = strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(id), "-"), "-")
+	return strings.ToUpper(id[:1]) + id[1:]
+}
+
+// branchName is T-<N>-<slug>, used when the worktree is created.
 func branchName(t Task) string {
 	slug := strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(t.Title), "-"), "-")
 	if len(slug) > 40 {
 		slug = strings.Trim(slug[:40], "-")
 	}
-	id := strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(t.ID), "-"), "-")
-	return strings.TrimRight(strings.ToUpper(id[:1])+id[1:]+"-"+slug, "-")
+	return strings.TrimRight(pathID(t.ID)+"-"+slug, "-")
+}
+
+// findWorkspace is the worktree of the task under root, matched by id; "" if there is none.
+// The dash after the id keeps one id apart from another that starts with it.
+func findWorkspace(root, id string) string {
+	dirs, _ := filepath.Glob(filepath.Join(root, pathID(id)+"-*", ".git"))
+	if len(dirs) == 0 {
+		return ""
+	}
+	return filepath.Dir(dirs[0])
 }
 
 // inside reports whether path is under root.
@@ -44,8 +59,12 @@ func git(ctx context.Context, dir string, args ...string) (string, error) {
 
 // prepareWorkspace adds the task's worktree under root, or reuses it, and clears the previous result.
 func prepareWorkspace(ctx context.Context, root, repo string, t Task) (dir, branch string, err error) {
-	branch = branchName(t)
-	dir = filepath.Join(root, branch)
+	dir = findWorkspace(root, t.ID)
+	branch = filepath.Base(dir)
+	if dir == "" {
+		branch = branchName(t)
+		dir = filepath.Join(root, branch)
+	}
 	if !inside(root, dir) {
 		return "", "", fmt.Errorf("workspace %s is outside %s", dir, root)
 	}
