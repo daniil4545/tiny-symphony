@@ -1,8 +1,8 @@
 # tiny-symphony
 
 A tiny daemon that takes tasks from your tracker and hands them to a coding agent, each in its own
-git worktree. Any agent that has a one-shot CLI mode works: Claude Code, Codex, opencode, Kimi, pi,
-and the next one is a few lines of config.
+git worktree. Any agent that has a one-shot CLI mode can work: Claude Code, Codex and Kimi are verified, opencode
+and pi are not yet (see Agents), and the next one is a few lines of config.
 
 Inspired by [OpenAI Symphony](https://github.com/openai/symphony), cut down to one job.
 
@@ -32,7 +32,19 @@ Needs `git`, [Backlog.md](https://github.com/MrLesk/Backlog.md) (`backlog`) 1.55
 A To Do task goes to Spec Review with a plan, or to Blocked with a question. Prompts are
 `prompts/to-do.md`, `in-progress.md`, `rework.md` (Go templates, an unknown variable is an error).
 The agent writes `.tiny-symphony/result.json` in its worktree; see `docs/spec.md`, Agent contract.
-`make smoke` (paid, needs `PAID_OK=1 MAX_USD=1`) runs the real `claude` on a toy task.
+`make smoke AGENT=<name>` (paid, needs `PAID_OK=1 MAX_USD=1`) runs that real CLI on a toy task.
+
+## Agents
+
+An agent counts as supported only after a passing smoke run.
+
+| Agent | CLI version | Command | Smoke run |
+| --- | --- | --- | --- |
+| claude | 2.1.322 | `claude -p --permission-mode auto {prompt}` | passed 2026-11-11 (S1) |
+| codex | 0.167.1 | `codex exec --sandbox workspace-write {prompt}` | passed 2026-11-11, 48 s |
+| kimi | 2.5.2 | `kimi -p {prompt}` | passed 2026-11-11, 61 s |
+| opencode | 2.2.6 | `opencode run --auto {prompt}` | not verified: API key expired |
+| pi | 1.4.0 | `pi -p {prompt}` | not verified: no API key |
 
 ## Docs
 

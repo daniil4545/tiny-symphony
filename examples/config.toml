@@ -16,3 +16,9 @@ repo = "~/Dev/toy-repo"
 # A task needs the label agent:<name>, for example agent:claude.
 [agents.claude]
 cmd = ["claude", "-p", "--permission-mode", "auto", "{prompt}"]
+# Verified by `make smoke AGENT=<name>` (see README): codex, kimi.
+# [agents.codex]
+# cmd = ["codex", "exec", "--sandbox", "workspace-write", "{prompt}"]
+# [agents.kimi]
+# cmd = ["kimi", "-p", "{prompt}"]
+# Not verified: opencode (`opencode run --auto {prompt}`), pi (`pi -p {prompt}`); see docs/spec.md.

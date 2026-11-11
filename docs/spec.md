@@ -158,17 +158,26 @@ forge = "github"      # optional: github (gh) or gitlab (glab); default from the
 cmd = ["claude", "-p", "--permission-mode", "auto", "{prompt}"]
 [agents.codex]
 cmd = ["codex", "exec", "--sandbox", "workspace-write", "{prompt}"]
-[agents.opencode]
-cmd = ["opencode", "run", "--auto", "{prompt}"]
 [agents.kimi]
 cmd = ["kimi", "-p", "{prompt}"]
-[agents.pi]
+```
+
+`~` is expanded in path fields only. `{prompt}` is replaced by the rendered prompt as one argv element; no shell is involved.
+Each command above passed `make smoke AGENT=<name>` on 2026-11-11: the task reached Spec Review with a plan
+(claude 2.1.322, codex 0.167.1, kimi 2.5.2). Codex writes `.tiny-symphony/result.json` under
+`--sandbox workspace-write`. Kimi `--auto` and `-y` do not work with `-p`, which already runs without asking.
+
+Not verified (flags from `--help` on 2026-11-11, no passing smoke run; the first two stopped on
+credentials, not on flags):
+
+```toml
+# opencode 2.2.6: the key in the local setup had expired
+cmd = ["opencode", "run", "--auto", "{prompt}"]
+# pi 1.4.0: no API key configured
 cmd = ["pi", "-p", "{prompt}"]
 ```
 
-`~` is expanded in path fields only. `{prompt}` is replaced by the rendered prompt as one argv element; no shell is involved. The flags
-above come from each CLI's `--help` on 2026-11-11 (claude 2.1.322, codex 0.167.1, opencode 2.2.6,
-kimi 2.5.2, pi 1.4.0) and are not run yet, except kimi: on the live 2.5.2 `--auto` and `-y` do not work with `-p`, which already runs without asking. A task with no `[projects]` entry is skipped with a log
+A task with no `[projects]` entry is skipped with a log
 line.
 
 ## Commands
