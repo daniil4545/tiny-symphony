@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -37,7 +38,7 @@ func checkConfig(ctx context.Context, w io.Writer, cfg *Config, configDir string
 	}
 	report("tracker "+cfg.BacklogDir, err)
 	report("workspace_root "+cfg.WorkspaceRoot, checkRoot(cfg.WorkspaceRoot))
-	for _, name := range sortedKeys(cfg.Agents) {
+	for _, name := range slices.Sorted(maps.Keys(cfg.Agents)) {
 		cmd := cfg.Agents[name].Cmd
 		_, err = exec.LookPath(cmd[0])
 		if err == nil && !slices.ContainsFunc(cmd, func(a string) bool { return strings.Contains(a, "{prompt}") }) {
@@ -45,7 +46,7 @@ func checkConfig(ctx context.Context, w io.Writer, cfg *Config, configDir string
 		}
 		report("agent "+name, err)
 	}
-	for _, name := range sortedKeys(cfg.Projects) {
+	for _, name := range slices.Sorted(maps.Keys(cfg.Projects)) {
 		report("project "+name, checkProject(ctx, cfg.Projects[name]))
 	}
 	for _, status := range []string{"To Do", "In Progress", "Rework"} {
@@ -87,13 +88,4 @@ func checkProject(ctx context.Context, p Project) error {
 		return fmt.Errorf("%s not in PATH", tool)
 	}
 	return nil
-}
-
-func sortedKeys[V any](m map[string]V) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	slices.Sort(keys)
-	return keys
 }

@@ -57,15 +57,24 @@ type Backlog struct {
 	run func(ctx context.Context, args ...string) ([]byte, error)
 }
 
+// errTracker marks a failure of the tracker itself (it did not start, hung, or refused the call).
+var errTracker = errors.New("tracker")
+
+// backlogTimeout bounds one backlog call: a hung tracker must not hold the loop or the exit on a signal.
+var backlogTimeout = time.Minute
+
 func NewBacklog(dir string) *Backlog {
 	return &Backlog{run: func(ctx context.Context, args ...string) ([]byte, error) {
+		ctx, cancel := context.WithTimeout(ctx, backlogTimeout)
+		defer cancel()
 		cmd := exec.CommandContext(ctx, "backlog", args...) //nolint:gosec // fixed binary, args built by this package
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(), "BACKLOG_CWD="+dir)
+		cmd.WaitDelay = 5 * time.Second
 		var out, stderr bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &out, &stderr
 		if err := cmd.Run(); err != nil {
-			return nil, fmt.Errorf("backlog %s: %w: %s", args[0], err, strings.TrimSpace(stderr.String()))
+			return nil, fmt.Errorf("%w: backlog %s: %w: %s", errTracker, args[0], err, strings.TrimSpace(stderr.String()))
 		}
 		return out.Bytes(), nil
 	}}
@@ -245,13 +254,9 @@ func editArgs(id string, r Result) []string {
 	return args
 }
 
-// Apply writes the checked result to the task: the fields first, the status last.
+// Apply writes the checked result and the status in one call: the tracker rejects an unknown status
+// before it changes anything, so a failed write leaves no half-written comment behind.
 func (b *Backlog) Apply(ctx context.Context, id string, r Result, status string) error {
-	if args := editArgs(id, r); len(args) > 3 {
-		if _, err := b.run(ctx, args...); err != nil {
-			return err
-		}
-	}
-	_, err := b.run(ctx, "task", "edit", id, "--status="+status)
+	_, err := b.run(ctx, append(editArgs(id, r), "--status="+status)...)
 	return err
 }

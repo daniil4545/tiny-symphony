@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 const listJSON = `{"schemaVersion":1,"kind":"task-list","tasks":[
@@ -97,8 +100,34 @@ func TestApplyWritesStatusLast(t *testing.T) {
 	if err := bl.Apply(t.Context(), "T-1", Result{Plan: "p"}, "Spec Review"); err != nil {
 		t.Fatal(err)
 	}
-	if len(calls) != 2 || !strings.Contains(calls[0], "--plan=p") || !strings.Contains(calls[1], "--status=Spec Review") {
+	if len(calls) != 1 || calls[0] != "task edit T-1 --plan=p --status=Spec Review" {
 		t.Fatalf("calls = %q", calls)
+	}
+}
+
+// A status that is not on the board is refused before anything is written, so Blocked cannot repeat its comment.
+func TestApplyUnknownStatusWritesNothing(t *testing.T) {
+	e := newEnv(t, `{}`)
+	e.create(t, "x", "agent:stub")
+	if err := e.bl.Apply(t.Context(), "T-1", Result{Comment: "c"}, "Nope"); err == nil {
+		t.Fatal("an unknown status must fail")
+	}
+	if got := e.view(t, "T-1"); len(got.Comments) != 0 || got.Status != "To Do" {
+		t.Fatalf("status = %s, comments = %v", got.Status, got.Comments)
+	}
+}
+
+func TestHungBacklogTimesOut(t *testing.T) {
+	bin := t.TempDir()
+	write(t, filepath.Join(bin, "backlog"), "#!/bin/sh\nexec sleep 30\n", 0o700)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	old := backlogTimeout
+	backlogTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { backlogTimeout = old })
+	start := time.Now()
+	_, err := NewBacklog(t.TempDir()).List(t.Context())
+	if !errors.Is(err, errTracker) || time.Since(start) > 5*time.Second {
+		t.Fatalf("err = %v after %v", err, time.Since(start))
 	}
 }
 

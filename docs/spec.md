@@ -13,7 +13,8 @@ it. It does no work on the task itself.
 1. **One job.** Take a task, hand it to an agent, keep it in its own workspace. Not a tracker, not
    a board, not a CI bot, not a merge bot. The board is the tracker's; merging is the human's.
 2. **The tracker is the state.** No database. A restart reads the tracker again and carries on.
-   In-memory state (running runs, attempt counts) may be lost; nothing else is.
+   In-memory state (running runs, retry times) may be lost; nothing else is. The failed-attempt count
+   and the last reason are kept in `.tiny-symphony/attempts` in the task's worktree.
 3. **An agent is a command.** Each agent is an argv template in the config. A new agent is a few
    lines of config, no code. The daemon does not parse agent output: it sees the exit code and the
    result file.
@@ -70,15 +71,16 @@ Every `poll_seconds`:
 3. **Dispatch** while fewer than `max_agents` runs are going and the task is not already running.
 
 One goroutine owns the scheduler state (running runs, attempts, retry times); workers only report
-their outcome back on a channel. Failure classes: a bad config stops dispatch but reconcile goes on;
-a tracker read error skips the tick and leaves the runs alone. Logs are `key=value` lines
+their outcome back on a channel. Failure classes: a bad config stops the process at start (it is read once);
+a tracker read error skips the tick and leaves the runs alone; a tracker error inside a run is not an
+attempt of the agent. Every `backlog` call has a timeout. Logs are `key=value` lines
 (`log/slog`) with the task id and the outcome.
 
 A run:
 
 1. Prepare the workspace: `git worktree add` from the task project's repo on branch `T-<N>-<slug>`,
-   or reuse the existing worktree of that task (the same worktree serves To Do, In Progress and
-   Rework).
+   or reuse the existing worktree of that task, found by the task id and not by the title (the same
+   worktree serves To Do, In Progress and Rework, and a renamed task keeps it).
 2. Render the prompt for the status from `prompts/<status>.md` with the task in it. The template
    is strict (Go `text/template`, `missingkey=error`): an unknown variable fails the run. Besides
    the task fields it gets `attempt` and `last_error`.
@@ -103,7 +105,11 @@ The daemon does not trust the agent's word; it checks facts it can see itself.
 | S8 | daemon restarted | a pid file in a worktree with that process still alive | kills the leftover process group, then dispatches as usual |
 
 Failed attempts are retried with backoff (1, 5, 15 min); the reason of the last failure goes into
-the next prompt, so the agent knows what to fix.
+the next prompt, so the agent knows what to fix. The count and the reason are saved in
+`.tiny-symphony/attempts`, so a restart or a new `run --once` does not give a failing task more runs.
+They are reset on success, on Blocked, and when a human moves the card to another status.
+The agent works in that worktree and can delete or edit the file: a damaged file counts as the limit
+reached, a deleted one resets the count (a known residual risk).
 
 Cleanup:
 
@@ -130,8 +136,8 @@ The agent gets one prompt and a working directory. Before it exits it writes
 Only `status` is required. The daemon accepts only the transitions in the pipeline table for the
 status the run started in. The result maps to task fields, not to a pile of comments: `plan` to
 `backlog task edit --plan`, `notes` to `--append-notes`, `summary` to `--final-summary`,
-`checked_ac` to `--check-ac`; `comment` is only for a question to the human (Blocked). The status
-is written last. The agent pushes its own branch and opens its own PR or MR (it needs `git` and
+`checked_ac` to `--check-ac`; `comment` is meant for a question to the human (Blocked) and is written as given with any status.
+The fields and the status go in one `backlog task edit` call, so a refused status writes nothing. The agent pushes its own branch and opens its own PR or MR (it needs `git` and
 `gh` or `glab` for that); the PR link goes into `notes`. The prompts name the task's acceptance
 criteria as the bar: the agent runs them before it hands the task over.
 
@@ -183,7 +189,7 @@ line.
 
 | Command | What it does |
 | --- | --- |
-| `tiny-symphony run` | the loop, in the foreground; launchd or systemd keep it alive |
+| `tiny-symphony run` | the loop, in the foreground; a supervisor such as launchd or systemd can restart it (not tried) |
 | `tiny-symphony run --once` | one tick, then waits for its runs and exits; exit 1 if a run failed |
 | `tiny-symphony check` | one line per check, exit 1 on any FAIL; starts no agent, writes and creates nothing |
 

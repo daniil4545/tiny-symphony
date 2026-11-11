@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 )
 
 func main() { os.Exit(run()) }
@@ -104,16 +105,30 @@ func (s *sched) runTask(ctx, stop context.Context, t Task, a Agent, p Project, a
 			return err
 		}
 	}
-	now, err := bl.Load(wctx, t.ID)
-	if err != nil {
+	var now Task
+	if err = s.trackerRetry(func() (e error) { now, e = bl.Load(wctx, t.ID); return }); err != nil {
 		return err
 	}
 	if !stillOurs(now, name, started) {
 		return errMoved
 	}
-	if err = bl.Apply(wctx, t.ID, res, to); err != nil {
+	if err = s.trackerRetry(func() error { return bl.Apply(wctx, t.ID, res, to) }); err != nil {
 		return err
 	}
 	l.Info("run done", "outcome", "applied", "to", to, "log", logPath)
 	return nil
+}
+
+// trackerRetry repeats a tracker call made after the agent finished: the paid result is already checked.
+// If it still fails, the error is a failed attempt of the run: errTracker is dropped, so it counts.
+func (s *sched) trackerRetry(f func() error) (err error) {
+	for i := range 3 {
+		if i > 0 {
+			time.Sleep(s.trackerPause)
+		}
+		if err = f(); err == nil || !errors.Is(err, errTracker) {
+			return err
+		}
+	}
+	return errors.New("writing the result: " + err.Error())
 }

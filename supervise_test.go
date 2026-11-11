@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -212,10 +213,25 @@ func TestBlockLeavesAMovedCardAlone(t *testing.T) {
 	e.create(t, "moved", "agent:stub")
 	backlogCmd(t, e.blDir, "task", "edit", "T-1", "-s", "Spec Review")
 	s := e.newSched()
-	s.tries["T-1"] = &tries{n: 3, status: "To Do", last: "boom"}
+	s.tries["T-1"] = &tries{N: 3, Status: "To Do", Last: "boom"}
 	s.block(t.Context(), "T-1")
 	if got := e.view(t, "T-1"); got.Status != "Spec Review" || len(got.Comments) != 0 || len(s.tries) != 0 {
 		t.Fatalf("status = %s, comments = %v", got.Status, got.Comments)
+	}
+}
+
+// A title changed by a human must not hide the worktree from cleanup.
+func TestDoneCleanupFindsRenamedTask(t *testing.T) {
+	e := newEnv(t, `{}`)
+	e.create(t, "before", "agent:stub")
+	dir, _, err := prepareWorkspace(t.Context(), e.cfg.WorkspaceRoot, e.repo, e.view(t, "T-1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	backlogCmd(t, e.blDir, "task", "edit", "T-1", "-t", "after", "-s", "Done")
+	e.newSched().housekeeping(t.Context())
+	if exists(dir) {
+		t.Fatal("the worktree of the renamed Done task must go")
 	}
 }
 
@@ -275,5 +291,143 @@ func TestOldLogsAreRotated(t *testing.T) {
 	e.newSched().housekeeping(t.Context())
 	if exists(old) || !exists(fresh) {
 		t.Fatalf("old exists = %v, fresh exists = %v", exists(old), exists(fresh))
+	}
+}
+
+// spec: S7
+func TestAttemptsSurviveRestart(t *testing.T) {
+	e := newEnv(t, `{"status":"Spec Review","plan":"p"}`)
+	e.useAgent(t, failAgent)
+	e.create(t, "hopeless", "agent:stub")
+	t.Setenv("STUB_DIR", t.TempDir())
+	starts := func() int {
+		prompts, _ := os.ReadFile(os.Getenv("STUB_DIR") + "/prompts")
+		return strings.Count(string(prompts), "----")
+	}
+	for i := range 5 { // every pass is a new process, like `run --once` from cron
+		drive(t, e.newSched(), 1)
+		if want := min(i+1, 3); starts() != want {
+			t.Fatalf("pass %d: starts = %d, want %d", i+1, starts(), want)
+		}
+	}
+	if got := e.view(t, "T-1"); got.Status != "Blocked" {
+		t.Fatalf("status = %s", got.Status)
+	}
+	if exists(attemptsFile(t, e, "T-1")) {
+		t.Fatal("attempts file must go with Blocked")
+	}
+}
+
+func TestAttemptsResetWhenAHumanMovesTheCard(t *testing.T) {
+	e := newEnv(t, `{"status":"Spec Review","plan":"p"}`)
+	e.useAgent(t, failAgent)
+	e.create(t, "moved", "agent:stub")
+	t.Setenv("STUB_DIR", t.TempDir())
+	drive(t, e.newSched(), 1)
+	file := attemptsFile(t, e, "T-1")
+	if body, _ := os.ReadFile(file); !strings.Contains(string(body), `"n":1`) || !strings.Contains(string(body), "agent exited") {
+		t.Fatalf("attempts = %q", body)
+	}
+	backlogCmd(t, e.blDir, "task", "edit", "T-1", "-s", "In Progress")
+	s := e.newSched()
+	if n, _, _ := s.attempt(t.Context(), e.view(t, "T-1")); n != 1 || exists(file) {
+		t.Fatalf("attempt = %d, file kept = %v", n, exists(file))
+	}
+}
+
+// A tracker failure is not an attempt of the agent: no Blocked, no counter.
+func TestTrackerFailureIsNotAnAttempt(t *testing.T) {
+	e := newEnv(t, `{"status":"Spec Review","plan":"p"}`)
+	e.useAgent(t, failAgent)
+	e.create(t, "flaky", "agent:stub")
+	t.Setenv("STUB_DIR", t.TempDir())
+	inner := e.bl.run
+	down := true
+	e.bl.run = func(ctx context.Context, args ...string) ([]byte, error) {
+		if down && args[0] == "task" && args[1] == "view" {
+			return nil, errTracker
+		}
+		return inner(ctx, args...)
+	}
+	s := e.newSched()
+	drive(t, s, 5)
+	if prompts, _ := os.ReadFile(os.Getenv("STUB_DIR") + "/prompts"); len(prompts) != 0 || len(s.tries) != 0 {
+		t.Fatalf("the agent started or an attempt was counted: %s", prompts)
+	}
+	down = false
+	if got := e.view(t, "T-1"); got.Status != "To Do" {
+		t.Fatalf("status = %s", got.Status)
+	}
+}
+
+// The agent has finished and the result is checked: a short tracker failure on Apply is retried, the agent is not run again.
+func TestApplyFailureAfterAgentIsRetried(t *testing.T) {
+	e := newEnv(t, `{"status":"Spec Review","plan":"p"}`)
+	e.create(t, "late", "agent:stub")
+	inner := e.bl.run
+	fails := 2
+	e.bl.run = func(ctx context.Context, args ...string) ([]byte, error) {
+		if args[0] == "task" && args[1] == "edit" && fails > 0 {
+			fails--
+			return nil, errTracker
+		}
+		return inner(ctx, args...)
+	}
+	s := e.newSched()
+	s.trackerPause = 0
+	drive(t, s, 1)
+	if got := e.view(t, "T-1"); got.Status != "Spec Review" || s.failed != 0 {
+		t.Fatalf("status = %s, failed = %d", got.Status, s.failed)
+	}
+}
+
+func attemptsFile(t *testing.T, e *env, id string) string {
+	t.Helper()
+	dir, err := findWorkspace(e.cfg.WorkspaceRoot, id)
+	if err != nil || dir == "" {
+		t.Fatalf("workspace of %s: %q %v", id, dir, err)
+	}
+	return filepath.Join(dir, stateDir, "attempts")
+}
+
+// The agent can write the attempts file: garbage or a count out of range means the limit is reached.
+func TestDamagedAttemptsFileMeansLimitReached(t *testing.T) {
+	for _, body := range []string{`{"n":-5,"status":"To Do"}`, `{"n":999999999999,"status":"To Do"}`, `not json`, `{"n":"x"}`} {
+		e := newEnv(t, `{"status":"Spec Review","plan":"p"}`)
+		e.useAgent(t, failAgent)
+		e.create(t, "tampered", "agent:stub")
+		t.Setenv("STUB_DIR", t.TempDir())
+		if _, _, err := prepareWorkspace(t.Context(), e.cfg.WorkspaceRoot, e.repo, e.view(t, "T-1")); err != nil {
+			t.Fatal(err)
+		}
+		write(t, attemptsFile(t, e, "T-1"), body, 0o600)
+		drive(t, e.newSched(), 2)
+		got := e.view(t, "T-1")
+		if prompts, _ := os.ReadFile(os.Getenv("STUB_DIR") + "/prompts"); len(prompts) != 0 || got.Status != "Blocked" ||
+			!strings.Contains(strings.Join(got.Comments, "\n"), "attempts file is damaged") {
+			t.Fatalf("%s: status %s, comments %v, prompts %q", body, got.Status, got.Comments, prompts)
+		}
+	}
+}
+
+// A refused write of the result is a failed attempt: the paid agent cannot restart without limit.
+func TestRefusedResultWriteCountsAsAttempt(t *testing.T) {
+	e := newEnv(t, `{"status":"Spec Review","plan":"p"}`)
+	e.useAgent(t, "#!/bin/sh\necho x >> \"$STUB_DIR/starts\"\ncp \"$STUB_RESULT\" .tiny-symphony/result.json\n")
+	e.create(t, "refused", "agent:stub")
+	t.Setenv("STUB_DIR", t.TempDir())
+	inner := e.bl.run
+	e.bl.run = func(ctx context.Context, args ...string) ([]byte, error) {
+		if args[0] == "task" && args[1] == "edit" {
+			return nil, errTracker
+		}
+		return inner(ctx, args...)
+	}
+	s := e.newSched()
+	s.trackerPause = 0
+	drive(t, s, 8)
+	starts, _ := os.ReadFile(os.Getenv("STUB_DIR") + "/starts")
+	if strings.Count(string(starts), "x") != 3 {
+		t.Fatalf("starts: %q", starts)
 	}
 }

@@ -16,14 +16,41 @@ const stateDir = ".tiny-symphony"
 
 var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
 
-// branchName is T-<N>-<slug>; the id is made path-safe so the branch can name a directory.
+// pathID is the task id made path-safe, so it can start a branch and a directory name.
+func pathID(id string) string {
+	id = strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(id), "-"), "-")
+	return strings.ToUpper(id[:1]) + id[1:]
+}
+
+// branchName is T-<N>-<slug>, used when the worktree is created.
 func branchName(t Task) string {
 	slug := strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(t.Title), "-"), "-")
 	if len(slug) > 40 {
 		slug = strings.Trim(slug[:40], "-")
 	}
-	id := strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(t.ID), "-"), "-")
-	return strings.TrimRight(strings.ToUpper(id[:1])+id[1:]+"-"+slug, "-")
+	return strings.TrimRight(pathID(t.ID)+"-"+slug, "-")
+}
+
+// findWorkspace is the worktree of the task; "" if none. The name starts with the id and the file
+// .tiny-symphony/task-id must agree. Two matches (a parent and its subtask) are an error.
+func findWorkspace(root, id string) (string, error) {
+	dirs, _ := filepath.Glob(filepath.Join(root, pathID(id)+"-*", ".git"))
+	var found []string
+	for _, g := range dirs {
+		dir := filepath.Dir(g)
+		got, err := os.ReadFile(filepath.Join(dir, stateDir, "task-id")) //nolint:gosec // glob under workspace_root
+		if err == nil && string(got) != id {
+			continue
+		}
+		found = append(found, dir)
+	}
+	switch len(found) {
+	case 0:
+		return "", nil
+	case 1:
+		return found[0], nil
+	}
+	return "", fmt.Errorf("task %s matches %d worktrees under %s: %v", id, len(found), root, found)
 }
 
 // inside reports whether path is under root.
@@ -44,8 +71,14 @@ func git(ctx context.Context, dir string, args ...string) (string, error) {
 
 // prepareWorkspace adds the task's worktree under root, or reuses it, and clears the previous result.
 func prepareWorkspace(ctx context.Context, root, repo string, t Task) (dir, branch string, err error) {
-	branch = branchName(t)
-	dir = filepath.Join(root, branch)
+	if dir, err = findWorkspace(root, t.ID); err != nil {
+		return "", "", err
+	}
+	branch = filepath.Base(dir)
+	if dir == "" {
+		branch = branchName(t)
+		dir = filepath.Join(root, branch)
+	}
 	if !inside(root, dir) {
 		return "", "", fmt.Errorf("workspace %s is outside %s", dir, root)
 	}
@@ -60,6 +93,9 @@ func prepareWorkspace(ctx context.Context, root, repo string, t Task) (dir, bran
 	}
 	if err = os.MkdirAll(filepath.Join(dir, stateDir), 0o750); err != nil {
 		return "", "", fmt.Errorf("state dir: %w", err)
+	}
+	if err = os.WriteFile(filepath.Join(dir, stateDir, "task-id"), []byte(t.ID), 0o600); err != nil {
+		return "", "", fmt.Errorf("task id: %w", err)
 	}
 	if err = excludeStateDir(ctx, dir); err != nil {
 		return "", "", err

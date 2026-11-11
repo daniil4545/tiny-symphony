@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -108,22 +109,24 @@ func (s *sched) housekeeping(ctx context.Context) {
 	root := s.cfg.WorkspaceRoot
 	for _, t := range done {
 		p, known := s.cfg.Projects[norm(t.Project)]
-		branch := branchName(t)
-		dir := filepath.Join(root, branch)
-		if _, busy := s.running[t.ID]; busy {
+		dir, ferr := findWorkspace(root, t.ID)
+		if ferr != nil {
+			s.log.Warn("cleanup: worktree kept", "task", t.ID, "err", ferr)
+		}
+		if _, busy := s.running[t.ID]; busy || !known || dir == "" || !inside(root, dir) {
 			continue
 		}
-		if _, e := os.Stat(dir); !known || e != nil || !inside(root, dir) {
-			continue
-		}
+		branch := filepath.Base(dir)
 		if _, e := git(ctx, p.Repo, "worktree", "remove", dir); e != nil {
 			s.log.Warn("cleanup: worktree kept", "task", t.ID, "err", e)
 			continue
 		}
 		// -d alone also accepts a branch that is merged only into its upstream.
-		if _, e := git(ctx, p.Repo, "merge-base", "--is-ancestor", branch, "HEAD"); e != nil {
-			s.log.Info("cleanup: branch kept, not merged", "task", t.ID, "branch", branch)
-		} else if _, e = git(ctx, p.Repo, "branch", "-d", branch); e != nil {
+		_, e := git(ctx, p.Repo, "merge-base", "--is-ancestor", branch, "HEAD")
+		if e == nil {
+			_, e = git(ctx, p.Repo, "branch", "-d", branch)
+		}
+		if e != nil {
 			s.log.Info("cleanup: branch kept, not merged", "task", t.ID, "branch", branch)
 		}
 	}
@@ -136,39 +139,82 @@ func (s *sched) housekeeping(ctx context.Context) {
 	}
 }
 
-// tries is what the scheduler remembers about a task's failed attempts; a restart forgets it.
+// tries is the failed-attempt record of a task, saved in .tiny-symphony/attempts of its worktree.
+// Only the pause before the next attempt is in memory.
 type tries struct {
-	n            int
-	last, status string
-	next         time.Time
+	N      int    `json:"n"`
+	Last   string `json:"last"`
+	Status string `json:"status"`
+	next   time.Time
+}
+
+func (s *sched) triesFile(id string) string {
+	if dir, err := findWorkspace(s.cfg.WorkspaceRoot, id); err == nil && dir != "" {
+		return filepath.Join(dir, stateDir, "attempts")
+	}
+	return ""
+}
+
+// getTries returns the record of the task, or nil; after a restart it comes from the file.
+// The agent can write that file, so garbage or a count outside [0, max_attempts] means the limit is reached.
+func (s *sched) getTries(id, status string) *tries {
+	if tr := s.tries[id]; tr != nil {
+		return tr
+	}
+	data, err := os.ReadFile(s.triesFile(id))
+	if err != nil {
+		return nil
+	}
+	tr := &tries{}
+	if json.Unmarshal(data, tr) != nil || tr.N < 0 || tr.N > s.cfg.MaxAttempts {
+		tr = &tries{N: s.cfg.MaxAttempts, Last: "attempts file is damaged", Status: status}
+	}
+	s.tries[id] = tr
+	return tr
+}
+
+func (s *sched) clearTries(id string) {
+	delete(s.tries, id)
+	if f := s.triesFile(id); f != "" {
+		_ = os.Remove(f)
+	}
 }
 
 // failure records a failed attempt and returns true when the task has used up max_attempts.
 func (s *sched) failure(id, status string, err error) bool {
-	tr := s.tries[id]
+	tr := s.getTries(id, status)
 	if tr == nil {
-		tr = &tries{status: status}
+		tr = &tries{Status: status}
 		s.tries[id] = tr
 	}
-	tr.n++
-	tr.last = err.Error()
-	tr.next = time.Now().Add(s.backoff[min(tr.n, len(s.backoff))-1])
-	return tr.n >= s.cfg.MaxAttempts
+	tr.N++
+	tr.Last = err.Error()
+	tr.next = time.Now().Add(s.backoff[max(min(tr.N, len(s.backoff)), 1)-1])
+	if f := s.triesFile(id); f != "" {
+		data, e := json.Marshal(tr)
+		if e == nil {
+			e = os.WriteFile(f, data, 0o600)
+		}
+		if e != nil {
+			s.log.Warn("attempts not saved", "task", id, "err", e)
+		}
+	}
+	return tr.N >= s.cfg.MaxAttempts
 }
 
 // block gives up on a task: the reason and the log path go into a comment, the status becomes Blocked.
 // The task is read again first: a card a human moved meanwhile is left alone. The counter stays until the write works.
 func (s *sched) block(ctx context.Context, id string) {
-	tr := s.tries[id]
+	tr := s.getTries(id, "")
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
 	defer cancel()
 	now, err := s.bl.Load(ctx, id)
-	if err == nil && (now.agentName() == "" || norm(now.Status) != norm(tr.status)) {
-		delete(s.tries, id)
+	if err == nil && (now.agentName() == "" || norm(now.Status) != norm(tr.Status)) {
+		s.clearTries(id)
 		s.log.Info("not blocking, the card changed", "task", id)
 		return
 	}
-	msg := fmt.Sprintf("tiny-symphony gave up after %d failed attempts. Last error: %s", tr.n, tr.last)
+	msg := fmt.Sprintf("tiny-symphony gave up after %d failed attempts. Last error: %s", tr.N, tr.Last)
 	if err == nil {
 		err = s.bl.Apply(ctx, id, Result{Comment: msg}, "Blocked")
 	}
@@ -176,23 +222,23 @@ func (s *sched) block(ctx context.Context, id string) {
 		s.log.Error("could not block the task", "task", id, "err", err)
 		return
 	}
-	delete(s.tries, id)
-	s.log.Warn("task blocked", "task", id, "outcome", "blocked", "attempts", tr.n)
+	s.clearTries(id)
+	s.log.Warn("task blocked", "task", id, "outcome", "blocked", "attempts", tr.N)
 }
 
 // attempt is the number of the next run of the task and the last error; wait is true inside the pause.
 func (s *sched) attempt(ctx context.Context, t Task) (n int, lastErr string, wait bool) {
-	tr := s.tries[t.ID]
-	if tr != nil && norm(tr.status) != norm(t.Status) {
-		delete(s.tries, t.ID) // a human moved the card: a fresh start
+	tr := s.getTries(t.ID, t.Status)
+	if tr != nil && norm(tr.Status) != norm(t.Status) {
+		s.clearTries(t.ID) // a human moved the card: a fresh start
 		tr = nil
 	}
 	if tr == nil {
 		return 1, "", false
 	}
-	if tr.n >= s.cfg.MaxAttempts { // an earlier write of Blocked failed
+	if tr.N >= s.cfg.MaxAttempts { // an earlier write of Blocked failed
 		s.block(ctx, t.ID)
 		return 0, "", true
 	}
-	return tr.n + 1, tr.last, time.Now().Before(tr.next)
+	return tr.N + 1, tr.Last, time.Now().Before(tr.next)
 }
