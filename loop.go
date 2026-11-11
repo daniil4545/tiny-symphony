@@ -132,7 +132,7 @@ func (s *sched) tick(ctx context.Context) {
 			l.Info("skipped", "agent", t.agentName(), "project", t.Project, "reason", "agent or project not in config")
 			continue
 		}
-		attempt, lastErr, wait := s.attempt(t)
+		attempt, lastErr, wait := s.attempt(ctx, t)
 		if wait {
 			continue
 		}

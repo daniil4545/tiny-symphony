@@ -178,13 +178,44 @@ func TestLeftoverGroupIsKilledOnStart(t *testing.T) {
 		t.Fatal(err)
 	}
 	pidFile := filepath.Join(root, "T-1-x", stateDir, "pid")
-	write(t, pidFile, strconv.Itoa(cmd.Process.Pid)+"\n", 0o600)
+	write(t, pidFile, strconv.Itoa(cmd.Process.Pid)+"\n"+procStart(t.Context(), cmd.Process.Pid)+"\n", 0o600)
 	reapLeftovers(root, slog.New(slog.DiscardHandler))
 	if err := cmd.Wait(); err == nil {
 		t.Fatal("the leftover process survived")
 	}
 	if exists(pidFile) {
 		t.Fatal("pid file left")
+	}
+}
+
+// A pid file whose start time does not match (a reused pid) must not kill the live stranger.
+func TestStalePidFileDoesNotKillStranger(t *testing.T) {
+	root := t.TempDir()
+	cmd := exec.CommandContext(t.Context(), "sleep", "60")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = cmd.Process.Kill(); _ = cmd.Wait() }()
+	for _, body := range []string{"\n", "Thu Jan  1 00:00:00 1970\n"} {
+		pidFile := filepath.Join(root, "T-1-x", stateDir, "pid")
+		write(t, pidFile, strconv.Itoa(cmd.Process.Pid)+"\n"+body, 0o600)
+		reapLeftovers(root, slog.New(slog.DiscardHandler))
+		if syscall.Kill(cmd.Process.Pid, 0) != nil || exists(pidFile) {
+			t.Fatalf("stranger killed or pid file left (start %q)", body)
+		}
+	}
+}
+
+func TestBlockLeavesAMovedCardAlone(t *testing.T) {
+	e := newEnv(t, `{}`)
+	e.create(t, "moved", "agent:stub")
+	backlogCmd(t, e.blDir, "task", "edit", "T-1", "-s", "Spec Review")
+	s := e.newSched()
+	s.tries["T-1"] = &tries{n: 3, status: "To Do", last: "boom"}
+	s.block(t.Context(), "T-1")
+	if got := e.view(t, "T-1"); got.Status != "Spec Review" || len(got.Comments) != 0 || len(s.tries) != 0 {
+		t.Fatalf("status = %s, comments = %v", got.Status, got.Comments)
 	}
 }
 
@@ -209,7 +240,15 @@ func TestDoneCleanupKeepsUnmergedBranchAndNeverPushes(t *testing.T) {
 	mustRun(t, dirs["T-1"], "add", "new.txt")
 	mustRun(t, dirs["T-1"], "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "wip")
 
-	e.newSched().housekeeping(t.Context())
+	mustRun(t, dirs["T-1"], "push", "-q", "-u", "origin", "HEAD") // upstream equals the branch: `-d` alone would delete it
+	s := e.newSched()
+	s.running["T-2"] = &active{stop: func(error) {}}
+	s.housekeeping(t.Context())
+	if !exists(dirs["T-2"]) {
+		t.Fatal("a task with a running agent keeps its worktree")
+	}
+	delete(s.running, "T-2")
+	s.housekeeping(t.Context())
 	if exists(dirs["T-1"]) || exists(dirs["T-2"]) || !exists(dirs["T-3"]) {
 		t.Fatal("worktrees of Done tasks go, others stay")
 	}
@@ -218,7 +257,7 @@ func TestDoneCleanupKeepsUnmergedBranchAndNeverPushes(t *testing.T) {
 		t.Fatalf("branches: %s", branches)
 	}
 	origin := mustRun(t, e.repo, "remote", "get-url", "origin")
-	if refs := mustRun(t, origin, "for-each-ref"); refs != "" {
+	if refs := mustRun(t, origin, "for-each-ref"); strings.Count(refs, "\n") != 0 { // only the test's own push
 		t.Fatalf("the daemon pushed: %s", refs)
 	}
 }

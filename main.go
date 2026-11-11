@@ -94,7 +94,7 @@ func (s *sched) runTask(ctx, stop context.Context, t Task, a Agent, p Project, a
 		return err
 	}
 	if to == "Review" {
-		if err = checkWork(ctx, dir, branch, p); err != nil {
+		if err = checkWork(ctx, dir, branch, p, s.timeout); err != nil {
 			return err
 		}
 	}
@@ -103,7 +103,7 @@ func (s *sched) runTask(ctx, stop context.Context, t Task, a Agent, p Project, a
 		return err
 	}
 	if !stillOurs(now, name, started) {
-		return errors.New("task label or status changed during the run, result not applied")
+		return errMoved
 	}
 	if err = bl.Apply(wctx, t.ID, res, to); err != nil {
 		return err
