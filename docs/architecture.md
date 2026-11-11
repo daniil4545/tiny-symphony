@@ -63,7 +63,7 @@ One tick, then one run of a To Do task.
 | 7 | `renderPrompt`, `runAgent` | strict template; agent runs with a timeout, log in `.tiny-symphony/` |
 | 8 | `readResult`, `checkResult` | result exists, transition allowed, plan present |
 | 9 | `checkWork` | for Review: clean tree, pushed branch, PR or MR, `verify` |
-| 10 | `Backlog.Apply` | fields first, status last, if the card did not move meanwhile |
+| 10 | `runTask`, `Backlog.Apply` | `runTask` re-reads the card and drops the result if it moved; `Apply` writes fields first, status last |
 
 Failure at a step: section 6. The tick, run and supervision rules are in `docs/spec.md` (Loop, Supervision).
 
@@ -91,7 +91,7 @@ In Progress, Rework. Transitions: the table and diagram in `docs/spec.md`, Pipel
 
 | System | Used for | Trust |
 | --- | --- | --- |
-| `backlog` CLI 1.55 | list, load, edit tasks | the only tracker access; agents get none |
+| `backlog` CLI 1.55 | list, load, edit tasks | the only tracker access the daemon uses; prompts give agents no tracker commands |
 | `git` | worktrees, `ls-remote`, branch cleanup | fixed binary |
 | `gh`, `glab` | `pr view`, `mr view` for Review | chosen by `forgeTool` in `supervise.go`, shared with `check` |
 | agent CLI | does the work | command from the config; its output is only logged; result is checked |
