@@ -89,6 +89,10 @@ func excludeStateDir(ctx context.Context, dir string) error {
 	if err != nil {
 		return fmt.Errorf("open exclude: %w", err)
 	}
-	_, err = f.WriteString(stateDir + "/\n")
+	sep := ""
+	if len(old) > 0 && !strings.HasSuffix(string(old), "\n") {
+		sep = "\n"
+	}
+	_, err = f.WriteString(sep + stateDir + "/\n")
 	return errors.Join(err, f.Close())
 }

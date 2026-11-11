@@ -86,3 +86,15 @@ func TestPrepareWorkspaceReusesExistingBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestExcludeKeepsUserLine(t *testing.T) {
+	repo := toyRepo(t)
+	path := filepath.Join(repo, ".git", "info", "exclude")
+	write(t, path, "*.log", 0o600)
+	if err := excludeStateDir(t.Context(), repo); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(path); string(got) != "*.log\n"+stateDir+"/\n" {
+		t.Fatalf("exclude = %q", got)
+	}
+}
