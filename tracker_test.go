@@ -47,6 +47,7 @@ func TestParseListBadJSON(t *testing.T) {
 	}
 }
 
+// spec: R3, R4
 func TestCheckResult(t *testing.T) {
 	todo := Task{Status: "To Do", Criteria: []Criterion{{Index: 1}, {Index: 2}}}
 	quick := Task{Status: "To Do", Labels: []string{"quick"}}

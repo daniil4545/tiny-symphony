@@ -92,6 +92,7 @@ func (e *env) view(t *testing.T, id string) Task {
 	return task
 }
 
+// spec: R2
 func TestRunOnceAppliesResult(t *testing.T) {
 	e := newEnv(t, `{"status":"Spec Review","plan":"- step one","notes":"a note","checked_ac":[2],"comment":""}`)
 	e.create(t, "Write a plan", "agent:stub")
@@ -133,6 +134,7 @@ func TestRunOnceAppliesResult(t *testing.T) {
 	}
 }
 
+// spec: R3
 func TestRunOnceRejectsInvalidTransition(t *testing.T) {
 	e := newEnv(t, `{"status":"Done","plan":"should not be applied"}`)
 	e.create(t, "Bad agent", "agent:stub")

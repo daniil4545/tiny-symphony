@@ -41,6 +41,7 @@ func TestPromptFile(t *testing.T) {
 }
 
 // The prompt reaches the agent as one argv element, untouched by any shell.
+// spec: R5, R1
 func TestPromptPassesWithoutShell(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "T-1-x")
@@ -72,6 +73,7 @@ func TestPromptPassesWithoutShell(t *testing.T) {
 	}
 }
 
+// spec: R1
 func TestRunAgentRefusesOutsideRoot(t *testing.T) {
 	root, other := t.TempDir(), t.TempDir()
 	for _, dir := range []string{other, root, filepath.Join(root, "..")} {
@@ -92,6 +94,7 @@ func TestRunAgentTimeoutKillsGroup(t *testing.T) {
 	}
 }
 
+// spec: R4
 func TestReadResult(t *testing.T) {
 	dir := t.TempDir()
 	if _, err := readResult(dir); err == nil {
