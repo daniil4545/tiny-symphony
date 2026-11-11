@@ -15,11 +15,11 @@ import (
 func main() { os.Exit(run()) }
 
 func run() int {
-	if len(os.Args) < 2 || os.Args[1] != "run" {
-		fmt.Fprintln(os.Stderr, "usage: tiny-symphony run [--once] [--config path]")
+	if len(os.Args) < 2 || os.Args[1] != "run" && os.Args[1] != "check" {
+		fmt.Fprintln(os.Stderr, "usage: tiny-symphony run [--once] [--config path] | check [--config path]")
 		return 2
 	}
-	fs := flag.NewFlagSet("run", flag.ExitOnError)
+	fs := flag.NewFlagSet(os.Args[1], flag.ExitOnError)
 	once := fs.Bool("once", false, "run one tick, wait for its runs, exit")
 	cfgPath := fs.String("config", defaultConfigPath, "config file")
 	_ = fs.Parse(os.Args[2:])
@@ -30,6 +30,12 @@ func run() int {
 	if err != nil {
 		log.Error("config", "err", err)
 		return 1
+	}
+	if os.Args[1] == "check" {
+		if checkConfig(ctx, os.Stdout, cfg, filepath.Dir(expandHome(*cfgPath)), NewBacklog(cfg.BacklogDir)) > 0 {
+			return 1
+		}
+		return 0
 	}
 	lock, err := lockWorkspace(cfg.WorkspaceRoot)
 	if err != nil {
