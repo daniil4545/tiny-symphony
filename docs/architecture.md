@@ -4,7 +4,7 @@ A foreground daemon (one process) that polls a Backlog.md board, runs an agent C
 worktree, checks the result and writes it to the board. Success is a task moved on by the daemon
 with the agent's plan or summary in its fields. Input: a config file, prompt templates, the board.
 Output: board edits, worktrees and run logs under `workspace_root`. State lives in the tracker;
-in memory only running runs and attempt counts. External calls: `backlog`, `git`, `gh` or `glab`,
+in memory only running runs and retry times; attempt counts are in `.tiny-symphony/attempts`. External calls: `backlog`, `git`, `gh` or `glab`,
 the agent CLI.
 
 Why it is built so: `docs/spec.md` (Philosophy, Decisions). Sections: 1 Map, 2 Main flow, 3 Processes,
@@ -33,7 +33,7 @@ flowchart LR
 | `supervise.go` | result checks for Review (`checkWork`), retries and Blocked, leftover agents, Done cleanup |
 | `tracker.go` | Backlog.md reader and writer, `Task` and `Result`, transition check |
 | `agent.go` | prompt rendering, starting the agent in its own process group, reading `result.json` |
-| `workspace.go` | branch name, git worktree per task, `.tiny-symphony/` kept out of git |
+| `workspace.go` | branch name, git worktree per task found by id, `.tiny-symphony/` kept out of git |
 | `config.go` | TOML config, defaults, `~` expansion, names compared trimmed and lowercased |
 | `check.go` | `check` command: static checks of config and environment |
 
@@ -59,7 +59,7 @@ One tick, then one run of a To Do task.
 | 3 | `tick` | stop runs whose card moved |
 | 4 | `tick` | pick tasks with a known agent and project, below `max_agents`, out of backoff |
 | 5 | `runTask` | reload the task; skip if label or status changed |
-| 6 | `prepareWorkspace` | worktree on `T-<N>-<slug>`, or reuse |
+| 6 | `prepareWorkspace` | worktree on `T-<N>-<slug>`, or reuse the one found by id |
 | 7 | `renderPrompt`, `runAgent` | strict template; agent runs with a timeout, log in `.tiny-symphony/` |
 | 8 | `readResult`, `checkResult` | result exists, transition allowed, plan present |
 | 9 | `checkWork` | for Review: clean tree, pushed branch, PR or MR, `verify` |
@@ -82,7 +82,8 @@ Failure at a step: section 6. The tick, run and supervision rules are in `docs/s
 | tasks, statuses, plans | Backlog.md files | the daemon (`backlog task edit`), humans |
 | worktree and branch | git repo of the project | the daemon creates and removes; the agent commits and pushes |
 | run log, pid file, `result.json` | `<worktree>/.tiny-symphony/` | the agent run |
-| running runs, attempts, retry times | memory of `sched` | lost on restart by design |
+| running runs, retry times | memory of `sched` | lost on restart by design |
+| failed attempts and last reason | `<worktree>/.tiny-symphony/attempts` | the daemon; kept over restarts |
 
 Statuses: To Do, Spec Review, In Progress, Review, Rework, Blocked, Done. Agent statuses: To Do,
 In Progress, Rework. Transitions: the table and diagram in `docs/spec.md`, Pipeline.
@@ -106,7 +107,8 @@ Task text becomes a prompt, so whoever writes tasks can run code (`docs/spec.md`
 | `max_attempts` reached | comment with reason and log path, task to Blocked |
 | card moved by a human | run killed, no attempt counted |
 | tracker read error | tick skipped, runs left alone |
-| daemon crash | pid files find leftover agents on next start; attempt counts are lost |
+| tracker error inside a run | logged, no attempt counted; a `backlog` call times out after a minute |
+| daemon crash | pid files find leftover agents on next start; attempt counts stay in the worktree |
 
 ## 7. Observability
 
