@@ -14,7 +14,7 @@ before adding anything. Tasks are in the central backlog, project `tiny-symphony
 
 ## Stack
 
-Go, one `tiny-symphony` binary. Not started yet.
+Go, one `tiny-symphony` binary. S1 is built; see README.
 
 ## Workflow
 
