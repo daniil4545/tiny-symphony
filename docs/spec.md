@@ -1,6 +1,6 @@
 # tiny-symphony: spec
 
-Status: draft 2026-11-11. Inspired by [OpenAI Symphony](https://github.com/openai/symphony)
+Status: accepted 2026-11-11, v0.0.1 scope is S1-S3. Inspired by [OpenAI Symphony](https://github.com/openai/symphony)
 ([SPEC.md](https://github.com/openai/symphony/blob/main/SPEC.md), read at `be10a1b`).
 
 tiny-symphony is a small daemon that watches a task tracker, takes the tasks marked for an agent
@@ -64,15 +64,24 @@ Every `poll_seconds`:
 
 1. **Reconcile.** For each running run, read the task status and the run time; stop runs as the
    Supervision table says. Stopping is SIGTERM to the process group, SIGKILL after 10 s.
-2. **Collect.** List tasks in the active statuses with an `agent:<name>` label, oldest first.
+2. **Collect.** List tasks in the active statuses with an `agent:<name>` label whose dependencies
+   are all Done. Order: priority, then oldest, then id. Statuses and labels are compared trimmed
+   and lowercased.
 3. **Dispatch** while fewer than `max_agents` runs are going and the task is not already running.
+
+One goroutine owns the scheduler state (running runs, attempts, retry times); workers only report
+their outcome back on a channel. Failure classes: a bad config stops dispatch but reconcile goes on;
+a tracker read error skips the tick and leaves the runs alone. Logs are `key=value` lines
+(`log/slog`) with the task id and the outcome.
 
 A run:
 
 1. Prepare the workspace: `git worktree add` from the task project's repo on branch `T-<N>-<slug>`,
    or reuse the existing worktree of that task (the same worktree serves To Do, In Progress and
    Rework).
-2. Render the prompt for the status from `prompts/<status>.md` with the task text in it.
+2. Render the prompt for the status from `prompts/<status>.md` with the task in it. The template
+   is strict (Go `text/template`, `missingkey=error`): an unknown variable fails the run. Besides
+   the task fields it gets `attempt` and `last_error`.
 3. Start the agent in the worktree in its own process group, output to a log file, pid to
    `.tiny-symphony/pid`.
 4. On exit, check the result (see Supervision). A good result is applied to the tracker; anything
@@ -114,13 +123,17 @@ The agent gets one prompt and a working directory. Before it exits it writes
 `.tiny-symphony/result.json` in the worktree:
 
 ```json
-{"status": "Spec Review", "comment": "markdown", "plan": "markdown, optional"}
+{"status": "Spec Review", "plan": "markdown", "notes": "markdown", "summary": "markdown",
+ "checked_ac": [1, 2], "comment": "a question to the human"}
 ```
 
-The daemon accepts only the transitions in the pipeline table for the status the run started in.
-It applies the plan with `backlog task edit --plan`, the comment with `--comment`, then the status.
-The agent pushes its own branch and opens its own PR or MR (it needs `git` and `gh` or `glab` for
-that); the PR link goes into the comment.
+Only `status` is required. The daemon accepts only the transitions in the pipeline table for the
+status the run started in. The result maps to task fields, not to a pile of comments: `plan` to
+`backlog task edit --plan`, `notes` to `--append-notes`, `summary` to `--final-summary`,
+`checked_ac` to `--check-ac`; `comment` is only for a question to the human (Blocked). The status
+is written last. The agent pushes its own branch and opens its own PR or MR (it needs `git` and
+`gh` or `glab` for that); the PR link goes into `notes`. The prompts name the task's acceptance
+criteria as the bar: the agent runs them before it hands the task over.
 
 ## Config
 
@@ -153,7 +166,7 @@ cmd = ["kimi", "--auto", "-p", "{prompt}"]
 cmd = ["pi", "-p", "{prompt}"]
 ```
 
-`{prompt}` is replaced by the rendered prompt as one argv element; no shell is involved. The flags
+`~` is expanded in path fields only. `{prompt}` is replaced by the rendered prompt as one argv element; no shell is involved. The flags
 above come from each CLI's `--help` on 2026-11-11 (claude 2.1.322, codex 0.167.1, opencode 2.2.6,
 kimi 2.5.2, pi 1.4.0) and are not run yet. A task with no `[projects]` entry is skipped with a log
 line.
@@ -176,7 +189,10 @@ who can write tasks can run code; do not point the daemon at a tracker others wr
 
 Poll loop with bounded concurrency; one workspace per task, reused across runs; stop a run when its
 task changes status; retry with backoff; restart recovery from the tracker without a database;
-handoff to a human as a status.
+handoff to a human as a status; a normalized task as the one seam to the tracker; candidate order;
+strict prompt templates with `attempt`; one owner of the scheduler state; failure classes;
+`key=value` logs; one workpad per task (result to fields); acceptance criteria as the bar; smoke
+tests against the real agent CLIs. The full table: `docs/research/T-660-prior-art.md`.
 
 ## Left out
 
@@ -184,7 +200,8 @@ Web UI and HTTP API (the Backlog.md board is the UI); database; hooks; per-state
 multi-turn sessions inside one run (the next status is the next run); stall detection by output
 (one-shot agents stay silent until they finish, so silence means nothing; `run_timeout` covers
 hangs); token and cost accounting; CI and PR reactions; auto-merge; trackers other than Backlog.md;
-live config reload; a daemon mode of its own.
+live config reload (restart the daemon); a per-project `setup` command and a `followups` result
+field (both wait for real need); a daemon mode of its own.
 
 ## Boundaries
 

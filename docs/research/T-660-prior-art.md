@@ -21,7 +21,8 @@ at `be10a1b` (2312 lines), reference implementation in Elixir.
 
 ### What to take from Symphony
 
-Proposed, waiting for the user's decision. "In spec" means `docs/spec.md` already has it.
+Decided 2026-11-11: every "take" row is in v0.0.1 except config reload, the `setup` command and
+`followups`, which wait for real need. "In spec" means `docs/spec.md` already had it.
 
 | Idea | Where | Proposal |
 | --- | --- | --- |
