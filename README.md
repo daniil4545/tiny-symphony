@@ -6,7 +6,7 @@ and pi are not yet (see Agents), and the next one is a few lines of config.
 
 Inspired by [OpenAI Symphony](https://github.com/openai/symphony), cut down to one job.
 
-Status: S3 of v0.0.1. `tiny-symphony run` polls every `poll_seconds`, runs up to `max_agents` agents at
+Status: v0.0.1 (S4). `tiny-symphony run` polls every `poll_seconds`, runs up to `max_agents` agents at
 once, takes ready tasks that carry an `agent:<name>` label, runs the agent on each in a git worktree
 and writes the result back to Backlog.md. It checks the result before applying it: a plan for To Do,
 and for Review a clean tree, a pushed branch, a PR or MR for the branch in any state (`gh` or `glab`) and the project's
@@ -15,8 +15,9 @@ prompt; after `max_attempts` the task goes to Blocked with a comment. A card mov
 its run; `run_timeout_minutes` kills a hung one; a lock file under `workspace_root` keeps a second
 daemon out; leftover agents of a crashed daemon are killed on start. Worktrees of Done tasks are
 removed (the branch only if it is an ancestor of the repo HEAD; a squash-merged branch stays) and run logs older than `log_days` are deleted. `run --once`
-does one tick and waits for its runs. Not there yet: `check`. Config is read at start; restart to
-change it.
+does one tick and waits for its runs. `check` tests the config before the first run. Not there yet:
+a live run under launchd, and the opencode and pi agents are not verified. Config is read at start;
+restart to change it.
 
 ## Quick start
 
@@ -27,7 +28,9 @@ Needs `git`, [Backlog.md](https://github.com/MrLesk/Backlog.md) (`backlog`) 1.55
    to it. Set `backlog_dir`, `workspace_root`, a `[projects.<name>]` repo and the agent command.
 3. The backlog needs the statuses To Do, Spec Review, In Progress, Review, Rework, Blocked, Done
    and a `projects` list that has the project name.
-4. Give a task the project and the label `agent:claude`, then run `./tiny-symphony run` (or `run --once`).
+4. Run `./tiny-symphony check`: one line per check (tracker answers, workspace, agents on PATH with
+   `{prompt}`, repos, forge CLI, prompt files); exit 0 means all ok. It starts no agent and writes nothing.
+5. Give a task the project and the label `agent:claude`, then run `./tiny-symphony run` (or `run --once`).
 
 A To Do task goes to Spec Review with a plan, or to Blocked with a question. Prompts are
 `prompts/to-do.md`, `in-progress.md`, `rework.md` (Go templates, an unknown variable is an error).
