@@ -8,7 +8,7 @@ Inspired by [OpenAI Symphony](https://github.com/openai/symphony), cut down to o
 
 Status: S1 of v0.0.1. `tiny-symphony run --once` takes the ready tasks that carry an `agent:<name>`
 label, runs the agent on each in a git worktree and writes the result back to Backlog.md. Not there
-yet: the loop (`run` without `--once`), `max_agents`, retries and Blocked on repeated failure,
+yet: checks of a result beyond its transition (a plan for To Do, finished work for Review), the loop (`run` without `--once`), `max_agents`, retries and Blocked on repeated failure,
 `check`, cleanup of Done tasks. Tasks run one after another.
 
 ## Quick start
