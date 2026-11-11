@@ -28,6 +28,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      # The integration tests run the real backlog CLI; the version is the one the code was written against.
+      - name: install backlog
+        run: npm install -g backlog.md@1.55.3
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.15.0

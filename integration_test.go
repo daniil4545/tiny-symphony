@@ -38,6 +38,9 @@ func backlogCmd(t *testing.T, dir string, args ...string) {
 func newEnv(t *testing.T, result string) *env {
 	t.Helper()
 	if _, err := exec.LookPath("backlog"); err != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatal("backlog CLI not on PATH: CI must install it")
+		}
 		t.Skip("backlog CLI not on PATH")
 	}
 	e := &env{repo: toyRepo(t), blDir: t.TempDir(), configDir: t.TempDir()}
