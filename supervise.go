@@ -33,11 +33,8 @@ func checkWork(ctx context.Context, dir, branch string, p Project, timeout time.
 	if !strings.HasPrefix(remote, head) {
 		return fmt.Errorf("branch %s is not pushed (HEAD %.8s)", branch, head)
 	}
-	tool, kind := "gh", "pr"
 	url, _ := git(ctx, dir, "remote", "get-url", "origin")
-	if norm(p.Forge) == "gitlab" || norm(p.Forge) == "" && strings.Contains(url, "gitlab") {
-		tool, kind = "glab", "mr"
-	}
+	tool, kind := forgeTool(p.Forge, url)
 	if out, err := runIn(ctx, dir, tool, kind, "view", branch); err != nil {
 		return fmt.Errorf("no PR or MR for %s: %w: %s", branch, err, tail(out))
 	}
@@ -47,6 +44,14 @@ func checkWork(ctx context.Context, dir, branch string, p Project, timeout time.
 		}
 	}
 	return nil
+}
+
+// forgeTool picks the forge CLI: gitlab by config or by the origin URL, gh otherwise.
+func forgeTool(forge, originURL string) (tool, kind string) {
+	if norm(forge) == "gitlab" || norm(forge) == "" && strings.Contains(originURL, "gitlab") {
+		return "glab", "mr"
+	}
+	return "gh", "pr"
 }
 
 func runIn(ctx context.Context, dir, name string, args ...string) (string, error) {
