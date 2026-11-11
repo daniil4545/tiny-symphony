@@ -15,6 +15,8 @@ const defaultConfigPath = "~/.config/tiny-symphony/config.toml"
 type Config struct {
 	BacklogDir        string             `toml:"backlog_dir"`
 	WorkspaceRoot     string             `toml:"workspace_root"`
+	PollSeconds       int                `toml:"poll_seconds"`
+	MaxAgents         int                `toml:"max_agents"`
 	RunTimeoutMinutes int                `toml:"run_timeout_minutes"`
 	Projects          map[string]Project `toml:"projects"`
 	Agents            map[string]Agent   `toml:"agents"`
@@ -55,6 +57,12 @@ func loadConfig(path string) (*Config, error) {
 	}
 	c.BacklogDir = expandHome(c.BacklogDir)
 	c.WorkspaceRoot = expandHome(c.WorkspaceRoot)
+	if c.PollSeconds <= 0 {
+		c.PollSeconds = 30
+	}
+	if c.MaxAgents <= 0 {
+		c.MaxAgents = 2
+	}
 	if c.RunTimeoutMinutes <= 0 {
 		c.RunTimeoutMinutes = 60
 	}

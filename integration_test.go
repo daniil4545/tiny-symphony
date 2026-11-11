@@ -68,7 +68,7 @@ func newEnv(t *testing.T, result string) *env {
 		write(t, filepath.Join(e.configDir, "prompts", f), string(text), 0o600)
 	}
 	e.cfg = &Config{
-		BacklogDir: e.blDir, WorkspaceRoot: t.TempDir(), RunTimeoutMinutes: 1,
+		BacklogDir: e.blDir, WorkspaceRoot: t.TempDir(), RunTimeoutMinutes: 1, PollSeconds: 1, MaxAgents: 2,
 		Projects: map[string]Project{"toy": {Repo: e.repo}},
 		Agents:   map[string]Agent{"stub": {Cmd: []string{filepath.Join(e.configDir, "agent.sh"), "{prompt}"}}},
 	}

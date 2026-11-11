@@ -139,7 +139,8 @@ func TestRunTaskSkipsWhenLabelRemoved(t *testing.T) {
 	bl := &Backlog{run: func(context.Context, ...string) ([]byte, error) { return []byte(view), nil }}
 	cfg := &Config{WorkspaceRoot: t.TempDir()}
 	listed := Task{ID: "T-1", Status: "To Do", Labels: []string{"agent:claude"}}
-	if err := runTask(t.Context(), cfg, t.TempDir(), bl, listed, Agent{Cmd: []string{"false"}}, Project{}, slog.New(slog.DiscardHandler)); err != nil {
+	s := newSched(cfg, t.TempDir(), bl, slog.New(slog.DiscardHandler))
+	if err := s.runTask(t.Context(), t.Context(), listed, Agent{Cmd: []string{"false"}}, Project{}, s.log); err != nil {
 		t.Fatal(err)
 	}
 	if entries, _ := os.ReadDir(cfg.WorkspaceRoot); len(entries) != 0 {

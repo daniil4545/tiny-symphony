@@ -10,24 +10,19 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
-	"time"
 )
 
 func main() { os.Exit(run()) }
 
 func run() int {
 	if len(os.Args) < 2 || os.Args[1] != "run" {
-		fmt.Fprintln(os.Stderr, "usage: tiny-symphony run --once [--config path]")
+		fmt.Fprintln(os.Stderr, "usage: tiny-symphony run [--once] [--config path]")
 		return 2
 	}
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
 	once := fs.Bool("once", false, "run one tick, wait for its runs, exit")
 	cfgPath := fs.String("config", defaultConfigPath, "config file")
 	_ = fs.Parse(os.Args[2:])
-	if !*once {
-		fmt.Fprintln(os.Stderr, "only run --once exists yet; the loop comes in S2")
-		return 2
-	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -36,7 +31,14 @@ func run() int {
 		log.Error("config", "err", err)
 		return 1
 	}
-	if runOnce(ctx, cfg, filepath.Dir(expandHome(*cfgPath)), NewBacklog(cfg.BacklogDir), log) > 0 {
+	lock, err := lockWorkspace(cfg.WorkspaceRoot)
+	if err != nil {
+		log.Error("lock", "err", err)
+		return 1
+	}
+	defer func() { _ = lock.Close() }()
+	s := newSched(cfg, filepath.Dir(expandHome(*cfgPath)), NewBacklog(cfg.BacklogDir), log)
+	if s.loop(ctx, *once) > 0 && *once {
 		return 1
 	}
 	return 0
@@ -47,31 +49,14 @@ func stillOurs(t Task, agent, status string) bool {
 	return t.agentName() == agent && norm(t.Status) == norm(status)
 }
 
-// runOnce runs every candidate task one after another and returns the number of failed runs.
+// runOnce is one tick; it waits for its runs and returns the number of failed ones.
 func runOnce(ctx context.Context, cfg *Config, configDir string, bl *Backlog, log *slog.Logger) int {
-	tasks, err := bl.List(ctx)
-	if err != nil {
-		log.Error("tracker read failed, tick skipped", "err", err)
-		return 1
-	}
-	failed := 0
-	for _, t := range tasks {
-		l := log.With("task", t.ID, "status", t.Status)
-		agent, ok := cfg.Agents[t.agentName()]
-		proj, known := cfg.Projects[norm(t.Project)]
-		if !ok || !known {
-			l.Info("skipped", "agent", t.agentName(), "project", t.Project, "reason", "agent or project not in config")
-			continue
-		}
-		if err := runTask(ctx, cfg, configDir, bl, t, agent, proj, l); err != nil {
-			l.Error("run failed", "outcome", "failed", "err", err)
-			failed++
-		}
-	}
-	return failed
+	return newSched(cfg, configDir, bl, log).loop(ctx, true)
 }
 
-func runTask(ctx context.Context, cfg *Config, configDir string, bl *Backlog, t Task, a Agent, p Project, l *slog.Logger) error {
+// runTask does one run. ctx is for the tracker and git; stop ends only the agent.
+func (s *sched) runTask(ctx, stop context.Context, t Task, a Agent, p Project, l *slog.Logger) error {
+	cfg, configDir, bl := s.cfg, s.configDir, s.bl
 	name, started := t.agentName(), t.Status
 	t, err := bl.Load(ctx, t.ID)
 	if err != nil {
@@ -90,7 +75,10 @@ func runTask(ctx context.Context, cfg *Config, configDir string, bl *Backlog, t 
 		return fmt.Errorf("prompt: %w", err)
 	}
 	l.Info("agent starting", "dir", dir)
-	logPath, err := runAgent(ctx, cfg.WorkspaceRoot, dir, a, prompt, time.Duration(cfg.RunTimeoutMinutes)*time.Minute)
+	logPath, err := runAgent(stop, cfg.WorkspaceRoot, dir, a, prompt, s.timeout, s.grace)
+	if errors.Is(context.Cause(stop), errMoved) {
+		return errMoved
+	}
 	if err != nil {
 		return fmt.Errorf("agent (log %s): %w", logPath, err)
 	}

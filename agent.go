@@ -55,8 +55,12 @@ func argv(cmd []string, prompt string) []string {
 	return out
 }
 
+// errRunTimeout tells a run killed for its time from an agent that crashed.
+var errRunTimeout = errors.New("run timeout")
+
 // runAgent runs the agent in dir, in its own process group, output to a log file; returns the log path.
-func runAgent(ctx context.Context, root, dir string, a Agent, prompt string, timeout time.Duration) (string, error) {
+// Cancelling ctx sends SIGTERM to the group, grace later SIGKILL.
+func runAgent(ctx context.Context, root, dir string, a Agent, prompt string, timeout, grace time.Duration) (string, error) {
 	if !inside(root, dir) {
 		return "", fmt.Errorf("refusing to start an agent in %s: outside %s", dir, root)
 	}
@@ -66,7 +70,7 @@ func runAgent(ctx context.Context, root, dir string, a Agent, prompt string, tim
 		return "", fmt.Errorf("create log: %w", err)
 	}
 	defer func() { _ = logFile.Close() }()
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	ctx, cancel := context.WithTimeoutCause(ctx, timeout, errRunTimeout)
 	defer cancel()
 	args := argv(a.Cmd, prompt)
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...) //nolint:gosec // the argv comes from the config, by design
@@ -74,16 +78,23 @@ func runAgent(ctx context.Context, root, dir string, a Agent, prompt string, tim
 	cmd.Stdout, cmd.Stderr = logFile, logFile
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM) }
-	cmd.WaitDelay = 10 * time.Second
+	cmd.WaitDelay = grace
 	if err = cmd.Start(); err != nil {
 		return logPath, fmt.Errorf("start agent: %w", err)
 	}
 	pidFile := filepath.Join(dir, stateDir, "pid")
-	_ = os.WriteFile(pidFile, []byte(strconv.Itoa(cmd.Process.Pid)+"\n"), 0o600)
+	if err = os.WriteFile(pidFile, []byte(strconv.Itoa(cmd.Process.Pid)+"\n"), 0o600); err != nil {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		_ = cmd.Wait()
+		return logPath, fmt.Errorf("write pid file: %w", err)
+	}
 	err = cmd.Wait()
 	_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	_ = os.Remove(pidFile)
 	if err != nil {
+		if errors.Is(context.Cause(ctx), errRunTimeout) {
+			return logPath, fmt.Errorf("agent killed after %s: %w", timeout, errRunTimeout)
+		}
 		return logPath, fmt.Errorf("agent exited: %w", err)
 	}
 	return logPath, nil
