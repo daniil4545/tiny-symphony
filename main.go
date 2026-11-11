@@ -120,7 +120,7 @@ func (s *sched) runTask(ctx, stop context.Context, t Task, a Agent, p Project, a
 }
 
 // trackerRetry repeats a tracker call made after the agent finished: the paid result is already checked.
-// If it still fails, the error carries errTracker and costs no attempt.
+// If it still fails, the error is a failed attempt of the run: errTracker is dropped, so it counts.
 func (s *sched) trackerRetry(f func() error) (err error) {
 	for i := range 3 {
 		if i > 0 {
@@ -130,5 +130,5 @@ func (s *sched) trackerRetry(f func() error) (err error) {
 			return err
 		}
 	}
-	return err
+	return errors.New("writing the result: " + err.Error())
 }

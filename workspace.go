@@ -31,14 +31,26 @@ func branchName(t Task) string {
 	return strings.TrimRight(pathID(t.ID)+"-"+slug, "-")
 }
 
-// findWorkspace is the worktree of the task under root, matched by id; "" if there is none.
-// The dash after the id keeps one id apart from another that starts with it.
-func findWorkspace(root, id string) string {
+// findWorkspace is the worktree of the task; "" if none. The name starts with the id and the file
+// .tiny-symphony/task-id must agree. Two matches (a parent and its subtask) are an error.
+func findWorkspace(root, id string) (string, error) {
 	dirs, _ := filepath.Glob(filepath.Join(root, pathID(id)+"-*", ".git"))
-	if len(dirs) == 0 {
-		return ""
+	var found []string
+	for _, g := range dirs {
+		dir := filepath.Dir(g)
+		got, err := os.ReadFile(filepath.Join(dir, stateDir, "task-id")) //nolint:gosec // glob under workspace_root
+		if err == nil && string(got) != id {
+			continue
+		}
+		found = append(found, dir)
 	}
-	return filepath.Dir(dirs[0])
+	switch len(found) {
+	case 0:
+		return "", nil
+	case 1:
+		return found[0], nil
+	}
+	return "", fmt.Errorf("task %s matches %d worktrees under %s: %v", id, len(found), root, found)
 }
 
 // inside reports whether path is under root.
@@ -59,7 +71,9 @@ func git(ctx context.Context, dir string, args ...string) (string, error) {
 
 // prepareWorkspace adds the task's worktree under root, or reuses it, and clears the previous result.
 func prepareWorkspace(ctx context.Context, root, repo string, t Task) (dir, branch string, err error) {
-	dir = findWorkspace(root, t.ID)
+	if dir, err = findWorkspace(root, t.ID); err != nil {
+		return "", "", err
+	}
 	branch = filepath.Base(dir)
 	if dir == "" {
 		branch = branchName(t)
@@ -79,6 +93,9 @@ func prepareWorkspace(ctx context.Context, root, repo string, t Task) (dir, bran
 	}
 	if err = os.MkdirAll(filepath.Join(dir, stateDir), 0o750); err != nil {
 		return "", "", fmt.Errorf("state dir: %w", err)
+	}
+	if err = os.WriteFile(filepath.Join(dir, stateDir, "task-id"), []byte(t.ID), 0o600); err != nil {
+		return "", "", fmt.Errorf("task id: %w", err)
 	}
 	if err = excludeStateDir(ctx, dir); err != nil {
 		return "", "", err

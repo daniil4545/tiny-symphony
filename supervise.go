@@ -109,7 +109,10 @@ func (s *sched) housekeeping(ctx context.Context) {
 	root := s.cfg.WorkspaceRoot
 	for _, t := range done {
 		p, known := s.cfg.Projects[norm(t.Project)]
-		dir := findWorkspace(root, t.ID)
+		dir, ferr := findWorkspace(root, t.ID)
+		if ferr != nil {
+			s.log.Warn("cleanup: worktree kept", "task", t.ID, "err", ferr)
+		}
 		if _, busy := s.running[t.ID]; busy || !known || dir == "" || !inside(root, dir) {
 			continue
 		}
@@ -146,21 +149,25 @@ type tries struct {
 }
 
 func (s *sched) triesFile(id string) string {
-	if dir := findWorkspace(s.cfg.WorkspaceRoot, id); dir != "" {
+	if dir, err := findWorkspace(s.cfg.WorkspaceRoot, id); err == nil && dir != "" {
 		return filepath.Join(dir, stateDir, "attempts")
 	}
 	return ""
 }
 
 // getTries returns the record of the task, or nil; after a restart it comes from the file.
-func (s *sched) getTries(id string) *tries {
+// The agent can write that file, so garbage or a count outside [0, max_attempts] means the limit is reached.
+func (s *sched) getTries(id, status string) *tries {
 	if tr := s.tries[id]; tr != nil {
 		return tr
 	}
 	data, err := os.ReadFile(s.triesFile(id))
-	tr := &tries{}
-	if err != nil || json.Unmarshal(data, tr) != nil {
+	if err != nil {
 		return nil
+	}
+	tr := &tries{}
+	if json.Unmarshal(data, tr) != nil || tr.N < 0 || tr.N > s.cfg.MaxAttempts {
+		tr = &tries{N: s.cfg.MaxAttempts, Last: "attempts file is damaged", Status: status}
 	}
 	s.tries[id] = tr
 	return tr
@@ -175,14 +182,14 @@ func (s *sched) clearTries(id string) {
 
 // failure records a failed attempt and returns true when the task has used up max_attempts.
 func (s *sched) failure(id, status string, err error) bool {
-	tr := s.getTries(id)
+	tr := s.getTries(id, status)
 	if tr == nil {
 		tr = &tries{Status: status}
 		s.tries[id] = tr
 	}
 	tr.N++
 	tr.Last = err.Error()
-	tr.next = time.Now().Add(s.backoff[min(tr.N, len(s.backoff))-1])
+	tr.next = time.Now().Add(s.backoff[max(min(tr.N, len(s.backoff)), 1)-1])
 	if f := s.triesFile(id); f != "" {
 		data, e := json.Marshal(tr)
 		if e == nil {
@@ -198,7 +205,7 @@ func (s *sched) failure(id, status string, err error) bool {
 // block gives up on a task: the reason and the log path go into a comment, the status becomes Blocked.
 // The task is read again first: a card a human moved meanwhile is left alone. The counter stays until the write works.
 func (s *sched) block(ctx context.Context, id string) {
-	tr := s.getTries(id)
+	tr := s.getTries(id, "")
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
 	defer cancel()
 	now, err := s.bl.Load(ctx, id)
@@ -221,7 +228,7 @@ func (s *sched) block(ctx context.Context, id string) {
 
 // attempt is the number of the next run of the task and the last error; wait is true inside the pause.
 func (s *sched) attempt(ctx context.Context, t Task) (n int, lastErr string, wait bool) {
-	tr := s.getTries(t.ID)
+	tr := s.getTries(t.ID, t.Status)
 	if tr != nil && norm(tr.Status) != norm(t.Status) {
 		s.clearTries(t.ID) // a human moved the card: a fresh start
 		tr = nil

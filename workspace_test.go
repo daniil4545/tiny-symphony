@@ -95,8 +95,11 @@ func TestWorkspaceIsFoundByIdNotTitle(t *testing.T) {
 	if err != nil || dir2 != dir || branch2 != branch || dir10 == dir {
 		t.Fatalf("%s %s %v, want %s %s", dir2, branch2, err, dir, branch)
 	}
-	if findWorkspace(root, "T-1") != dir || findWorkspace(root, "T-10") != dir10 || findWorkspace(root, "T-100") != "" {
-		t.Fatal("T-1, T-10 and T-100 must not be mixed up")
+	for id, want := range map[string]string{"T-1": dir, "T-10": dir10, "T-100": ""} {
+		if got, err := findWorkspace(root, id); got != want || err != nil {
+			t.Logf("%s: got %q %v, want %q", id, got, err, want)
+			t.Fatal("T-1, T-10 and T-100 must not be mixed up")
+		}
 	}
 	if got := mustRun(t, repo, "branch", "--format=%(refname:short)"); strings.Contains(got, "renamed") {
 		t.Fatalf("a branch was made from the new title: %s", got)
@@ -120,5 +123,30 @@ func TestExcludeKeepsUserLine(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(path); string(got) != "*.log\n"+stateDir+"/\n" {
 		t.Fatalf("exclude = %q", got)
+	}
+}
+
+// A subtask directory starts with the parent's id; the parent must not take it.
+func TestSubtaskDirIsNotTakenByParent(t *testing.T) {
+	repo, root := toyRepo(t), t.TempDir()
+	sub, _, err := prepareWorkspace(t.Context(), root, repo, Task{ID: "T-1.1", Title: "Part"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, _, err := prepareWorkspace(t.Context(), root, repo, Task{ID: "T-1", Title: "1 whole"})
+	if err != nil || parent == sub {
+		t.Fatalf("parent %q sub %q %v", parent, sub, err)
+	}
+	if got, _ := findWorkspace(root, "T-1.1"); got != sub {
+		t.Fatalf("subtask lost its directory: %q", got)
+	}
+	// Directories made before the id file existed are ambiguous: an error, no run.
+	for _, d := range []string{sub, parent} {
+		if err = os.Remove(filepath.Join(d, stateDir, "task-id")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, err := findWorkspace(root, "T-1"); err == nil {
+		t.Fatalf("two matches must fail, got %q", got)
 	}
 }

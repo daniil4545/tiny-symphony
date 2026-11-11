@@ -313,7 +313,7 @@ func TestAttemptsSurviveRestart(t *testing.T) {
 	if got := e.view(t, "T-1"); got.Status != "Blocked" {
 		t.Fatalf("status = %s", got.Status)
 	}
-	if exists(filepath.Join(findWorkspace(e.cfg.WorkspaceRoot, "T-1"), stateDir, "attempts")) {
+	if exists(attemptsFile(t, e, "T-1")) {
 		t.Fatal("attempts file must go with Blocked")
 	}
 }
@@ -324,7 +324,7 @@ func TestAttemptsResetWhenAHumanMovesTheCard(t *testing.T) {
 	e.create(t, "moved", "agent:stub")
 	t.Setenv("STUB_DIR", t.TempDir())
 	drive(t, e.newSched(), 1)
-	file := filepath.Join(findWorkspace(e.cfg.WorkspaceRoot, "T-1"), stateDir, "attempts")
+	file := attemptsFile(t, e, "T-1")
 	if body, _ := os.ReadFile(file); !strings.Contains(string(body), `"n":1`) || !strings.Contains(string(body), "agent exited") {
 		t.Fatalf("attempts = %q", body)
 	}
@@ -378,5 +378,56 @@ func TestApplyFailureAfterAgentIsRetried(t *testing.T) {
 	drive(t, s, 1)
 	if got := e.view(t, "T-1"); got.Status != "Spec Review" || s.failed != 0 {
 		t.Fatalf("status = %s, failed = %d", got.Status, s.failed)
+	}
+}
+
+func attemptsFile(t *testing.T, e *env, id string) string {
+	t.Helper()
+	dir, err := findWorkspace(e.cfg.WorkspaceRoot, id)
+	if err != nil || dir == "" {
+		t.Fatalf("workspace of %s: %q %v", id, dir, err)
+	}
+	return filepath.Join(dir, stateDir, "attempts")
+}
+
+// The agent can write the attempts file: garbage or a count out of range means the limit is reached.
+func TestDamagedAttemptsFileMeansLimitReached(t *testing.T) {
+	for _, body := range []string{`{"n":-5,"status":"To Do"}`, `{"n":999999999999,"status":"To Do"}`, `not json`, `{"n":"x"}`} {
+		e := newEnv(t, `{"status":"Spec Review","plan":"p"}`)
+		e.useAgent(t, failAgent)
+		e.create(t, "tampered", "agent:stub")
+		t.Setenv("STUB_DIR", t.TempDir())
+		if _, _, err := prepareWorkspace(t.Context(), e.cfg.WorkspaceRoot, e.repo, e.view(t, "T-1")); err != nil {
+			t.Fatal(err)
+		}
+		write(t, attemptsFile(t, e, "T-1"), body, 0o600)
+		drive(t, e.newSched(), 2)
+		got := e.view(t, "T-1")
+		if prompts, _ := os.ReadFile(os.Getenv("STUB_DIR") + "/prompts"); len(prompts) != 0 || got.Status != "Blocked" ||
+			!strings.Contains(strings.Join(got.Comments, "\n"), "attempts file is damaged") {
+			t.Fatalf("%s: status %s, comments %v, prompts %q", body, got.Status, got.Comments, prompts)
+		}
+	}
+}
+
+// A refused write of the result is a failed attempt: the paid agent cannot restart without limit.
+func TestRefusedResultWriteCountsAsAttempt(t *testing.T) {
+	e := newEnv(t, `{"status":"Spec Review","plan":"p"}`)
+	e.useAgent(t, "#!/bin/sh\necho x >> \"$STUB_DIR/starts\"\ncp \"$STUB_RESULT\" .tiny-symphony/result.json\n")
+	e.create(t, "refused", "agent:stub")
+	t.Setenv("STUB_DIR", t.TempDir())
+	inner := e.bl.run
+	e.bl.run = func(ctx context.Context, args ...string) ([]byte, error) {
+		if args[0] == "task" && args[1] == "edit" {
+			return nil, errTracker
+		}
+		return inner(ctx, args...)
+	}
+	s := e.newSched()
+	s.trackerPause = 0
+	drive(t, s, 8)
+	starts, _ := os.ReadFile(os.Getenv("STUB_DIR") + "/starts")
+	if strings.Count(string(starts), "x") != 3 {
+		t.Fatalf("starts: %q", starts)
 	}
 }
