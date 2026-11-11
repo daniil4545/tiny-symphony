@@ -108,6 +108,8 @@ Failed attempts are retried with backoff (1, 5, 15 min); the reason of the last 
 the next prompt, so the agent knows what to fix. The count and the reason are saved in
 `.tiny-symphony/attempts`, so a restart or a new `run --once` does not give a failing task more runs.
 They are reset on success, on Blocked, and when a human moves the card to another status.
+The agent works in that worktree and can delete or edit the file: a damaged file counts as the limit
+reached, a deleted one resets the count (a known residual risk).
 
 Cleanup:
 
