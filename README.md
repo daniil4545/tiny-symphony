@@ -6,10 +6,13 @@ and the next one is a few lines of config.
 
 Inspired by [OpenAI Symphony](https://github.com/openai/symphony), cut down to one job.
 
-Status: S1 of v0.0.1. `tiny-symphony run --once` takes the ready tasks that carry an `agent:<name>`
-label, runs the agent on each in a git worktree and writes the result back to Backlog.md. Not there
-yet: checks of a result beyond its transition (a plan for To Do, finished work for Review), the loop (`run` without `--once`), `max_agents`, retries and Blocked on repeated failure,
-`check`, cleanup of Done tasks. Tasks run one after another.
+Status: S2 of v0.0.1. `tiny-symphony run` polls every `poll_seconds`, runs up to `max_agents` agents at
+once, takes ready tasks that carry an `agent:<name>` label, runs the agent on each in a git worktree
+and writes the result back to Backlog.md. A card moved by a human stops its run; `run_timeout_minutes`
+kills a hung one; a lock file under `workspace_root` keeps a second daemon out. `run --once` does one
+tick and waits for its runs. Not there yet: checks of a result beyond its transition (a plan for To Do,
+finished work for Review), retries and Blocked on repeated failure, `check`, cleanup of Done tasks,
+restart recovery, log rotation. Config is read at start; restart to change it.
 
 ## Quick start
 
@@ -20,7 +23,7 @@ Needs `git`, [Backlog.md](https://github.com/MrLesk/Backlog.md) (`backlog`) 1.55
    to it. Set `backlog_dir`, `workspace_root`, a `[projects.<name>]` repo and the agent command.
 3. The backlog needs the statuses To Do, Spec Review, In Progress, Review, Rework, Blocked, Done
    and a `projects` list that has the project name.
-4. Give a task the project and the label `agent:claude`, then run `./tiny-symphony run --once`.
+4. Give a task the project and the label `agent:claude`, then run `./tiny-symphony run` (or `run --once`).
 
 A To Do task goes to Spec Review with a plan, or to Blocked with a question. Prompts are
 `prompts/to-do.md`, `in-progress.md`, `rework.md` (Go templates, an unknown variable is an error).

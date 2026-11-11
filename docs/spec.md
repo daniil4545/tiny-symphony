@@ -210,12 +210,12 @@ What the daemon never does, whatever the input. Each line gets a test.
 - R1: Starts an agent outside `workspace_root`, or with a cwd other than the task's worktree.
 - R2: Touches a task without an `agent:<name>` label.
 - R3: Applies a transition that is not in the pipeline table for the status the run started in.
-- Runs a second instance against the same `workspace_root`.
+- R6: Runs a second instance against the same `workspace_root`.
 - Merges or pushes, or deletes an unmerged branch. It removes only worktrees of Done tasks.
 - R4: Applies a result it has not checked.
 - R5: Passes the prompt through a shell.
 
-A line gets its ID together with its test; the lines without one wait for S2 and S3.
+A line gets its ID together with its test; the lines without one wait for S3.
 
 ## Decisions
 
