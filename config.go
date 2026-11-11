@@ -18,12 +18,16 @@ type Config struct {
 	PollSeconds       int                `toml:"poll_seconds"`
 	MaxAgents         int                `toml:"max_agents"`
 	RunTimeoutMinutes int                `toml:"run_timeout_minutes"`
+	MaxAttempts       int                `toml:"max_attempts"`
+	LogDays           int                `toml:"log_days"`
 	Projects          map[string]Project `toml:"projects"`
 	Agents            map[string]Agent   `toml:"agents"`
 }
 
 type Project struct {
-	Repo string `toml:"repo"`
+	Repo   string `toml:"repo"`
+	Verify string `toml:"verify"`
+	Forge  string `toml:"forge"`
 }
 
 type Agent struct {
@@ -65,6 +69,12 @@ func loadConfig(path string) (*Config, error) {
 	}
 	if c.RunTimeoutMinutes <= 0 {
 		c.RunTimeoutMinutes = 60
+	}
+	if c.MaxAttempts <= 0 {
+		c.MaxAttempts = 3
+	}
+	if c.LogDays <= 0 {
+		c.LogDays = 14
 	}
 	projects := map[string]Project{}
 	for name, p := range c.Projects {

@@ -40,7 +40,7 @@ func waitFor(t *testing.T, what string, ok func() bool) {
 
 func exists(path string) bool { _, err := os.Stat(path); return err == nil }
 
-func (s *sched) next() { s.finish(<-s.done) }
+func (s *sched) next() { s.finish(context.Background(), <-s.done) }
 
 func TestTwoAgentsRunInParallelThirdWaits(t *testing.T) {
 	e := newEnv(t, `{"status":"Spec Review","plan":"p"}`)
@@ -67,6 +67,7 @@ func TestTwoAgentsRunInParallelThirdWaits(t *testing.T) {
 	}
 }
 
+// spec: S3
 func TestMovedCardStopsAgentInOneTick(t *testing.T) {
 	e := newEnv(t, `{"status":"Spec Review","plan":"p"}`)
 	e.create(t, "moved", "agent:stub")
@@ -86,6 +87,7 @@ func TestMovedCardStopsAgentInOneTick(t *testing.T) {
 	}
 }
 
+// spec: S2
 func TestTimeoutIsAFailure(t *testing.T) {
 	e := newEnv(t, `{"status":"Spec Review"}`)
 	e.create(t, "slow", "agent:stub")
@@ -118,6 +120,9 @@ func TestSignalStopsRunsAndExits(t *testing.T) {
 	waitFor(t, "the agent", func() bool { return exists(dir + "/start-T-1-one") })
 	cancel()
 	<-exit
+	if s.failed != 0 {
+		t.Fatalf("a shutdown is not a failure: failed = %d", s.failed)
+	}
 	if !exists(dir + "/term-T-1-one") {
 		t.Fatal("the agent did not get SIGTERM before the loop exited")
 	}

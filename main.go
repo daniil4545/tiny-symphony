@@ -37,6 +37,7 @@ func run() int {
 		return 1
 	}
 	defer func() { _ = lock.Close() }()
+	reapLeftovers(cfg.WorkspaceRoot, log)
 	s := newSched(cfg, filepath.Dir(expandHome(*cfgPath)), NewBacklog(cfg.BacklogDir), log)
 	if s.loop(ctx, *once) > 0 && *once {
 		return 1
@@ -49,16 +50,13 @@ func stillOurs(t Task, agent, status string) bool {
 	return t.agentName() == agent && norm(t.Status) == norm(status)
 }
 
-// runOnce is one tick; it waits for its runs and returns the number of failed ones.
-func runOnce(ctx context.Context, cfg *Config, configDir string, bl *Backlog, log *slog.Logger) int {
-	return newSched(cfg, configDir, bl, log).loop(ctx, true)
-}
-
 // runTask does one run. ctx is for the tracker and git; stop ends only the agent.
-func (s *sched) runTask(ctx, stop context.Context, t Task, a Agent, p Project, l *slog.Logger) error {
+// The tracker is read and written on a context that a signal does not cancel, so a write is never cut short.
+func (s *sched) runTask(ctx, stop context.Context, t Task, a Agent, p Project, attempt int, lastErr string, l *slog.Logger) (err error) {
 	cfg, configDir, bl := s.cfg, s.configDir, s.bl
 	name, started := t.agentName(), t.Status
-	t, err := bl.Load(ctx, t.ID)
+	wctx := context.WithoutCancel(ctx)
+	t, err = bl.Load(wctx, t.ID)
 	if err != nil {
 		return err
 	}
@@ -70,17 +68,22 @@ func (s *sched) runTask(ctx, stop context.Context, t Task, a Agent, p Project, l
 	if err != nil {
 		return err
 	}
-	prompt, err := renderPrompt(promptFile(configDir, t.Status), t, branch, 1, "")
+	prompt, err := renderPrompt(promptFile(configDir, t.Status), t, branch, attempt, lastErr)
 	if err != nil {
 		return fmt.Errorf("prompt: %w", err)
 	}
-	l.Info("agent starting", "dir", dir)
+	l.Info("agent starting", "dir", dir, "attempt", attempt)
 	logPath, err := runAgent(stop, cfg.WorkspaceRoot, dir, a, prompt, s.timeout, s.grace)
 	if errors.Is(context.Cause(stop), errMoved) {
 		return errMoved
 	}
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("%w (log %s)", err, logPath)
+		}
+	}()
 	if err != nil {
-		return fmt.Errorf("agent (log %s): %w", logPath, err)
+		return fmt.Errorf("agent: %w", err)
 	}
 	res, err := readResult(dir)
 	if err != nil {
@@ -90,14 +93,19 @@ func (s *sched) runTask(ctx, stop context.Context, t Task, a Agent, p Project, l
 	if err != nil {
 		return err
 	}
-	now, err := bl.Load(ctx, t.ID)
+	if to == "Review" {
+		if err = checkWork(ctx, dir, branch, p); err != nil {
+			return err
+		}
+	}
+	now, err := bl.Load(wctx, t.ID)
 	if err != nil {
 		return err
 	}
 	if !stillOurs(now, name, started) {
 		return errors.New("task label or status changed during the run, result not applied")
 	}
-	if err = bl.Apply(ctx, t.ID, res, to); err != nil {
+	if err = bl.Apply(wctx, t.ID, res, to); err != nil {
 		return err
 	}
 	l.Info("run done", "outcome", "applied", "to", to, "log", logPath)

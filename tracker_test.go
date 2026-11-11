@@ -60,14 +60,16 @@ func TestCheckResult(t *testing.T) {
 		want string
 		bad  bool
 	}{
-		{"spec", todo, Result{Status: "spec review", CheckedAC: []int{1, 2}}, "Spec Review", false},
-		{"blocked", todo, Result{Status: "Blocked"}, "Blocked", false},
+		{"spec", todo, Result{Status: "spec review", Plan: "p", CheckedAC: []int{1, 2}}, "Spec Review", false},
+		{"spec needs a plan", todo, Result{Status: "Spec Review"}, "", true},
+		{"blocked needs a comment", todo, Result{Status: "Blocked"}, "", true},
+		{"blocked", todo, Result{Status: "Blocked", Comment: "why?"}, "Blocked", false},
 		{"done is not a transition", todo, Result{Status: "Done"}, "", true},
 		{"in progress is a human step", todo, Result{Status: "In Progress"}, "", true},
 		{"review needs quick", todo, Result{Status: "Review"}, "", true},
 		{"review with quick", quick, Result{Status: "Review"}, "Review", false},
 		{"human status has no transitions", Task{Status: "Spec Review"}, Result{Status: "In Progress"}, "", true},
-		{"criterion out of range", todo, Result{Status: "Spec Review", CheckedAC: []int{3}}, "", true},
+		{"criterion out of range", todo, Result{Status: "Spec Review", Plan: "p", CheckedAC: []int{3}}, "", true},
 		{"rework to review", Task{Status: "Rework"}, Result{Status: "Review"}, "Review", false},
 	}
 	for _, c := range cases {
@@ -140,7 +142,7 @@ func TestRunTaskSkipsWhenLabelRemoved(t *testing.T) {
 	cfg := &Config{WorkspaceRoot: t.TempDir()}
 	listed := Task{ID: "T-1", Status: "To Do", Labels: []string{"agent:claude"}}
 	s := newSched(cfg, t.TempDir(), bl, slog.New(slog.DiscardHandler))
-	if err := s.runTask(t.Context(), t.Context(), listed, Agent{Cmd: []string{"false"}}, Project{}, s.log); err != nil {
+	if err := s.runTask(t.Context(), t.Context(), listed, Agent{Cmd: []string{"false"}}, Project{}, 1, "", s.log); err != nil {
 		t.Fatal(err)
 	}
 	if entries, _ := os.ReadDir(cfg.WorkspaceRoot); len(entries) != 0 {

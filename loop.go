@@ -50,6 +50,9 @@ type sched struct {
 	running              map[string]*active
 	done                 chan outcome
 	failed               int
+	tries                map[string]*tries
+	backoff              []time.Duration
+	stopping             bool
 }
 
 func newSched(cfg *Config, configDir string, bl *Backlog, log *slog.Logger) *sched {
@@ -59,6 +62,7 @@ func newSched(cfg *Config, configDir string, bl *Backlog, log *slog.Logger) *sch
 		timeout: time.Duration(cfg.RunTimeoutMinutes) * time.Minute,
 		grace:   10 * time.Second,
 		running: map[string]*active{}, done: make(chan outcome),
+		tries: map[string]*tries{}, backoff: []time.Duration{time.Minute, 5 * time.Minute, 15 * time.Minute},
 	}
 }
 
@@ -74,12 +78,14 @@ func (s *sched) loop(ctx context.Context, once bool) int {
 	for once && len(s.running) > 0 || !once {
 		select {
 		case o := <-s.done:
-			s.finish(o)
+			s.stopping = s.stopping || ctx.Err() != nil
+			s.finish(ctx, o)
 		case <-next:
 			s.tick(ctx)
 		case <-ctx.Done():
+			s.stopping = true
 			for len(s.running) > 0 {
-				s.finish(<-s.done)
+				s.finish(ctx, <-s.done)
 			}
 			return s.failed
 		}
@@ -89,12 +95,19 @@ func (s *sched) loop(ctx context.Context, once bool) int {
 
 // tick is reconcile, collect, dispatch. A tracker read error skips it and leaves the runs alone.
 func (s *sched) tick(ctx context.Context) {
+	if ctx.Err() != nil {
+		return
+	}
 	tasks, err := s.bl.List(ctx)
+	if ctx.Err() != nil {
+		return
+	}
 	if err != nil {
 		s.log.Error("tracker read failed, tick skipped", "err", err)
 		s.failed++
 		return
 	}
+	s.housekeeping(ctx)
 	listed := map[string]Task{}
 	for _, t := range tasks {
 		listed[t.ID] = t
@@ -119,23 +132,34 @@ func (s *sched) tick(ctx context.Context) {
 			l.Info("skipped", "agent", t.agentName(), "project", t.Project, "reason", "agent or project not in config")
 			continue
 		}
+		attempt, lastErr, wait := s.attempt(t)
+		if wait {
+			continue
+		}
 		stop, cancel := context.WithCancelCause(ctx)
 		s.running[t.ID] = &active{status: t.Status, stop: cancel}
 		go func() {
-			s.done <- outcome{t.ID, s.runTask(ctx, stop, t, agent, proj, l)}
+			s.done <- outcome{t.ID, s.runTask(ctx, stop, t, agent, proj, attempt, lastErr, l)}
 		}()
 	}
 }
 
-func (s *sched) finish(o outcome) {
+func (s *sched) finish(ctx context.Context, o outcome) {
+	status := s.running[o.id].status
 	s.running[o.id].stop(nil)
 	delete(s.running, o.id)
 	switch {
 	case o.err == nil:
+		delete(s.tries, o.id)
 	case errors.Is(o.err, errMoved):
 		s.log.Info("run stopped", "task", o.id, "outcome", "moved", "reason", "status changed, no attempt counted")
+	case s.stopping:
+		s.log.Info("run stopped", "task", o.id, "outcome", "shutdown")
 	default:
 		s.log.Error("run failed", "task", o.id, "outcome", "failed", "err", o.err)
 		s.failed++
+		if s.failure(o.id, status, o.err) {
+			s.block(ctx, o.id)
+		}
 	}
 }
