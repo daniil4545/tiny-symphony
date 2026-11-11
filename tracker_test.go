@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"log/slog"
+	"os"
 	"reflect"
 	"slices"
 	"strings"
@@ -109,5 +111,38 @@ func TestLoadParsesView(t *testing.T) {
 	}
 	if task.Description != "d" || task.Project != "toy" || task.Comments[0] != "c1" || !task.Criteria[0].Checked {
 		t.Fatalf("task = %+v", task)
+	}
+}
+
+// spec: R2
+func TestStillOursChecksLabelAndStatus(t *testing.T) {
+	task := Task{Status: " to do", Labels: []string{"agent:claude"}}
+	for name, c := range map[string]struct {
+		task          Task
+		agent, status string
+		want          bool
+	}{
+		"same":           {task, "claude", "To Do", true},
+		"label removed":  {Task{Status: "To Do"}, "claude", "To Do", false},
+		"other agent":    {task, "codex", "To Do", false},
+		"status changed": {task, "claude", "Review", false},
+	} {
+		if got := stillOurs(c.task, c.agent, c.status); got != c.want {
+			t.Errorf("%s: got %v", name, got)
+		}
+	}
+}
+
+// spec: R2
+func TestRunTaskSkipsWhenLabelRemoved(t *testing.T) {
+	view := `{"task":{"id":"T-1","title":"x","status":"To Do","labels":["human"],"project":"toy"}}`
+	bl := &Backlog{run: func(context.Context, ...string) ([]byte, error) { return []byte(view), nil }}
+	cfg := &Config{WorkspaceRoot: t.TempDir()}
+	listed := Task{ID: "T-1", Status: "To Do", Labels: []string{"agent:claude"}}
+	if err := runTask(t.Context(), cfg, t.TempDir(), bl, listed, Agent{Cmd: []string{"false"}}, Project{}, slog.New(slog.DiscardHandler)); err != nil {
+		t.Fatal(err)
+	}
+	if entries, _ := os.ReadDir(cfg.WorkspaceRoot); len(entries) != 0 {
+		t.Fatalf("a workspace was made for a task without the label: %v", entries)
 	}
 }

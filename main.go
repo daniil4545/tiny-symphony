@@ -42,6 +42,11 @@ func run() int {
 	return 0
 }
 
+// stillOurs reports whether the task still carries the agent label and sits in the status it was taken in.
+func stillOurs(t Task, agent, status string) bool {
+	return t.agentName() == agent && norm(t.Status) == norm(status)
+}
+
 // runOnce runs every candidate task one after another and returns the number of failed runs.
 func runOnce(ctx context.Context, cfg *Config, configDir string, bl *Backlog, log *slog.Logger) int {
 	tasks, err := bl.List(ctx)
@@ -67,9 +72,14 @@ func runOnce(ctx context.Context, cfg *Config, configDir string, bl *Backlog, lo
 }
 
 func runTask(ctx context.Context, cfg *Config, configDir string, bl *Backlog, t Task, a Agent, p Project, l *slog.Logger) error {
+	name, started := t.agentName(), t.Status
 	t, err := bl.Load(ctx, t.ID)
 	if err != nil {
 		return err
+	}
+	if !stillOurs(t, name, started) {
+		l.Info("skipped", "outcome", "skipped", "reason", "label or status changed since the list")
+		return nil
 	}
 	dir, branch, err := prepareWorkspace(ctx, cfg.WorkspaceRoot, p.Repo, t)
 	if err != nil {
@@ -96,8 +106,8 @@ func runTask(ctx context.Context, cfg *Config, configDir string, bl *Backlog, t 
 	if err != nil {
 		return err
 	}
-	if norm(now.Status) != norm(t.Status) {
-		return errors.New("task status changed during the run, result not applied")
+	if !stillOurs(now, name, started) {
+		return errors.New("task label or status changed during the run, result not applied")
 	}
 	if err = bl.Apply(ctx, t.ID, res, to); err != nil {
 		return err

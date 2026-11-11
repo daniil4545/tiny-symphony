@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"slices"
@@ -101,7 +102,10 @@ func (j jsonTask) task() Task {
 	for _, l := range j.Labels {
 		t.Labels = append(t.Labels, norm(l))
 	}
-	t.Created, _ = time.Parse(time.RFC3339, j.CreatedAt)
+	var err error
+	if t.Created, err = time.Parse(time.RFC3339, j.CreatedAt); err != nil {
+		slog.Warn("bad createdAt, task sorts first", "task", j.ID, "value", j.CreatedAt)
+	}
 	for _, c := range j.AcceptanceCriteria {
 		t.Criteria = append(t.Criteria, Criterion(c))
 	}
