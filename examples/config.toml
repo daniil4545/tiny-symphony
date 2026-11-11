@@ -1,6 +1,8 @@
 # Copy to ~/.config/tiny-symphony/config.toml; the prompts/ folder goes next to it.
 backlog_dir = "~/Dev/backlog"
 workspace_root = "~/.local/share/tiny-symphony/work"
+poll_seconds = 30
+max_agents = 2
 run_timeout_minutes = 60
 
 # Backlog.md project (the task's `project` field) -> git repository.

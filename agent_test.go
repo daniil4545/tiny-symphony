@@ -50,7 +50,7 @@ func TestPromptPassesWithoutShell(t *testing.T) {
 	write(t, script, "#!/bin/sh\nprintf '%s' \"$#\" > argc\nprintf '%s' \"$1\" > arg1\npwd -P > cwd\n", 0o700)
 	prompt := "a b; $(touch pwned) `touch pwned2` \"q\" 'r'\n- line"
 
-	if _, err := runAgent(t.Context(), root, dir, Agent{Cmd: []string{script, "{prompt}"}}, prompt, time.Minute); err != nil {
+	if _, err := runAgent(t.Context(), root, dir, Agent{Cmd: []string{script, "{prompt}"}}, prompt, time.Minute, time.Second); err != nil {
 		t.Fatal(err)
 	}
 	argc, _ := os.ReadFile(filepath.Join(dir, "argc"))
@@ -77,7 +77,7 @@ func TestPromptPassesWithoutShell(t *testing.T) {
 func TestRunAgentRefusesOutsideRoot(t *testing.T) {
 	root, other := t.TempDir(), t.TempDir()
 	for _, dir := range []string{other, root, filepath.Join(root, "..")} {
-		if _, err := runAgent(t.Context(), root, dir, Agent{Cmd: []string{"true"}}, "p", time.Minute); err == nil {
+		if _, err := runAgent(t.Context(), root, dir, Agent{Cmd: []string{"true"}}, "p", time.Minute, time.Second); err == nil {
 			t.Fatalf("started an agent in %s", dir)
 		}
 	}
@@ -88,7 +88,7 @@ func TestRunAgentTimeoutKillsGroup(t *testing.T) {
 	dir := filepath.Join(root, "w")
 	write(t, filepath.Join(dir, stateDir, "keep"), "", 0o600)
 	start := time.Now()
-	_, err := runAgent(t.Context(), root, dir, Agent{Cmd: []string{"sh", "-c", "sleep 30 & wait"}}, "p", 200*time.Millisecond)
+	_, err := runAgent(t.Context(), root, dir, Agent{Cmd: []string{"sh", "-c", "sleep 30 & wait"}}, "p", 200*time.Millisecond, time.Second)
 	if err == nil || time.Since(start) > 15*time.Second {
 		t.Fatalf("err=%v after %v", err, time.Since(start))
 	}
