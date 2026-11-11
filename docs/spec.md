@@ -149,7 +149,7 @@ max_attempts = 3
 log_days = 14
 
 [projects.tix]        # Backlog.md project -> git repository
-repo = "~/Dev/self-projects/tracker"
+repo = "~/src/tix"
 verify = "make check" # optional, runs in the worktree before a result goes to Review
 forge = "github"      # optional: github (gh) or gitlab (glab); default from the remote host
 
