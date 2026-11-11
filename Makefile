@@ -112,5 +112,7 @@ paid-guard:
 	@test -n "$$MAX_USD" || { echo "paid run: set MAX_USD"; exit 1; }
 
 # Paid smoke test on the real agent CLI: one tiny task, a few cents; run after approval.
+# AGENT picks the CLI from liveAgents in live_test.go: make smoke AGENT=codex.
+AGENT ?= claude
 smoke: paid-guard
-	go test -tags live -count=1 -run Live -v ./...
+	go test -tags live -count=1 -run '(?i)^TestLive$(AGENT)$$' -v ./...
