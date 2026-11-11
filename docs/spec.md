@@ -1,6 +1,6 @@
 # tiny-symphony: spec
 
-Status: accepted 2026-11-11, v0.0.1 scope is S1-S3. Inspired by [OpenAI Symphony](https://github.com/openai/symphony)
+Status: accepted 2026-11-11, implemented in v0.0.1. Inspired by [OpenAI Symphony](https://github.com/openai/symphony)
 ([SPEC.md](https://github.com/openai/symphony/blob/main/SPEC.md), read at `be10a1b`).
 
 tiny-symphony is a small daemon that watches a task tracker, takes the tasks marked for an agent
@@ -146,11 +146,10 @@ poll_seconds = 30
 max_agents = 2
 run_timeout_minutes = 60
 max_attempts = 3
-
 log_days = 14
 
 [projects.tix]        # Backlog.md project -> git repository
-repo = "~/Dev/self-projects/tracker"
+repo = "~/src/tix"
 verify = "make check" # optional, runs in the worktree before a result goes to Review
 forge = "github"      # optional: github (gh) or gitlab (glab); default from the remote host
 
@@ -162,7 +161,7 @@ cmd = ["codex", "exec", "--sandbox", "workspace-write", "{prompt}"]
 cmd = ["kimi", "-p", "{prompt}"]
 ```
 
-`~` is expanded in path fields only. `{prompt}` is replaced by the rendered prompt as one argv element; no shell is involved.
+`backlog_dir` and `workspace_root` are required; the other settings default to the values above. At least one agent and one project are needed to do any work. `~` is expanded in path fields only. `{prompt}` is replaced by the rendered prompt as one argv element; no shell is involved.
 Each command above passed `make smoke AGENT=<name>` on 2026-11-11: the task reached Spec Review with a plan
 (claude 2.1.322, codex 0.167.1, kimi 2.5.2). Codex writes `.tiny-symphony/result.json` under
 `--sandbox workspace-write`. Kimi `--auto` and `-y` do not work with `-p`, which already runs without asking.
@@ -185,8 +184,10 @@ line.
 | Command | What it does |
 | --- | --- |
 | `tiny-symphony run` | the loop, in the foreground; launchd or systemd keep it alive |
-| `tiny-symphony run --once` | one tick, then waits for its runs and exits |
-| `tiny-symphony check` | config, agent commands on PATH, repos exist, tracker answers |
+| `tiny-symphony run --once` | one tick, then waits for its runs and exits; exit 1 if a run failed |
+| `tiny-symphony check` | one line per check, exit 1 on any FAIL; starts no agent, writes and creates nothing |
+
+Both take `--config <path>` (default `~/.config/tiny-symphony/config.toml`). `check` tests: the tracker answers, `workspace_root` (or its nearest existing parent) is a writable directory, at least one agent and one project exist, each agent command is on PATH and contains `{prompt}`, each repo is a git repo with `git` and the forge CLI (chosen as in S6) on PATH, and the three prompt files render.
 
 ## Trust and safety
 

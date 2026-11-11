@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 )
 
 // checkConfig is `tiny-symphony check`: one line per check, nothing is run, written or created.
@@ -23,6 +24,12 @@ func checkConfig(ctx context.Context, w io.Writer, cfg *Config, configDir string
 			return
 		}
 		_, _ = fmt.Fprintf(w, "ok   %s\n", name)
+	}
+	if len(cfg.Agents) == 0 {
+		report("agents", errors.New("none configured"))
+	}
+	if len(cfg.Projects) == 0 {
+		report("projects", errors.New("none configured"))
 	}
 	_, err := os.Stat(cfg.BacklogDir)
 	if err == nil {
@@ -39,7 +46,7 @@ func checkConfig(ctx context.Context, w io.Writer, cfg *Config, configDir string
 		report("agent "+name, err)
 	}
 	for _, name := range sortedKeys(cfg.Projects) {
-		report("project "+name, checkProject(cfg.Projects[name]))
+		report("project "+name, checkProject(ctx, cfg.Projects[name]))
 	}
 	for _, status := range []string{"To Do", "In Progress", "Rework"} {
 		file := promptFile(configDir, status)
@@ -56,6 +63,9 @@ func checkRoot(root string) error {
 			if !st.IsDir() {
 				return fmt.Errorf("%s is not a directory", p)
 			}
+			if err = syscall.Access(p, 2); err != nil {
+				return fmt.Errorf("%s is not writable: %w", p, err)
+			}
 			return nil
 		}
 		if !os.IsNotExist(err) || filepath.Dir(p) == p {
@@ -64,20 +74,19 @@ func checkRoot(root string) error {
 	}
 }
 
-func checkProject(p Project) error {
+func checkProject(ctx context.Context, p Project) error {
 	if _, err := os.Stat(filepath.Join(p.Repo, ".git")); err != nil {
 		return fmt.Errorf("%s is not a git repository", p.Repo)
 	}
-	tools := map[string][]string{"github": {"gh"}, "gitlab": {"glab"}}[norm(p.Forge)]
-	if tools == nil {
-		tools = []string{"gh", "glab"}
+	if _, err := exec.LookPath("git"); err != nil {
+		return errors.New("git not in PATH")
 	}
-	for _, tool := range tools {
-		if _, err := exec.LookPath(tool); err == nil {
-			return nil
-		}
+	url, _ := git(ctx, p.Repo, "remote", "get-url", "origin")
+	tool, _ := forgeTool(p.Forge, url)
+	if _, err := exec.LookPath(tool); err != nil {
+		return fmt.Errorf("%s not in PATH", tool)
 	}
-	return fmt.Errorf("none of %s in PATH", strings.Join(tools, ", "))
+	return nil
 }
 
 func sortedKeys[V any](m map[string]V) []string {
