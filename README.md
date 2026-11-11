@@ -6,13 +6,17 @@ and the next one is a few lines of config.
 
 Inspired by [OpenAI Symphony](https://github.com/openai/symphony), cut down to one job.
 
-Status: S2 of v0.0.1. `tiny-symphony run` polls every `poll_seconds`, runs up to `max_agents` agents at
+Status: S3 of v0.0.1. `tiny-symphony run` polls every `poll_seconds`, runs up to `max_agents` agents at
 once, takes ready tasks that carry an `agent:<name>` label, runs the agent on each in a git worktree
-and writes the result back to Backlog.md. A card moved by a human stops its run; `run_timeout_minutes`
-kills a hung one; a lock file under `workspace_root` keeps a second daemon out. `run --once` does one
-tick and waits for its runs. Not there yet: checks of a result beyond its transition (a plan for To Do,
-finished work for Review), retries and Blocked on repeated failure, `check`, cleanup of Done tasks,
-restart recovery, log rotation. Config is read at start; restart to change it.
+and writes the result back to Backlog.md. It checks the result before applying it: a plan for To Do,
+and for Review a clean tree, a pushed branch, a PR or MR for the branch in any state (`gh` or `glab`) and the project's
+`verify` command. A failed run is retried after 1, 5 and 15 minutes with the reason in the next
+prompt; after `max_attempts` the task goes to Blocked with a comment. A card moved by a human stops
+its run; `run_timeout_minutes` kills a hung one; a lock file under `workspace_root` keeps a second
+daemon out; leftover agents of a crashed daemon are killed on start. Worktrees of Done tasks are
+removed (the branch only if it is an ancestor of the repo HEAD; a squash-merged branch stays) and run logs older than `log_days` are deleted. `run --once`
+does one tick and waits for its runs. Not there yet: `check`. Config is read at start; restart to
+change it.
 
 ## Quick start
 

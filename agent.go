@@ -83,7 +83,7 @@ func runAgent(ctx context.Context, root, dir string, a Agent, prompt string, tim
 		return logPath, fmt.Errorf("start agent: %w", err)
 	}
 	pidFile := filepath.Join(dir, stateDir, "pid")
-	if err = os.WriteFile(pidFile, []byte(strconv.Itoa(cmd.Process.Pid)+"\n"), 0o600); err != nil {
+	if err = os.WriteFile(pidFile, []byte(strconv.Itoa(cmd.Process.Pid)+"\n"+procStart(ctx, cmd.Process.Pid)+"\n"), 0o600); err != nil {
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		_ = cmd.Wait()
 		return logPath, fmt.Errorf("write pid file: %w", err)

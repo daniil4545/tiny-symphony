@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -171,6 +172,27 @@ func (b *Backlog) List(ctx context.Context) ([]Task, error) {
 	return parseList(out)
 }
 
+// ListDone returns the Done tasks that carry an agent label: their worktrees are due for cleanup.
+func (b *Backlog) ListDone(ctx context.Context) ([]Task, error) {
+	out, err := b.run(ctx, "task", "list", "-s", "Done", "--json")
+	if err != nil {
+		return nil, err
+	}
+	var doc struct {
+		Tasks []jsonTask `json:"tasks"`
+	}
+	if err = json.Unmarshal(out, &doc); err != nil {
+		return nil, fmt.Errorf("task list json: %w", err)
+	}
+	var tasks []Task
+	for _, j := range doc.Tasks {
+		if t := j.task(); t.agentName() != "" {
+			tasks = append(tasks, t)
+		}
+	}
+	return tasks, nil
+}
+
 // Load reads one task with its description and criteria.
 func (b *Backlog) Load(ctx context.Context, id string) (Task, error) {
 	out, err := b.run(ctx, "task", "view", id, "--json")
@@ -191,6 +213,12 @@ func checkResult(r Result, t Task) (string, error) {
 	for _, to := range transitions[norm(t.Status)] {
 		if norm(to) != norm(r.Status) || (to == "Review" && norm(t.Status) == "to do" && !t.hasLabel("quick")) {
 			continue
+		}
+		if to == "Blocked" && strings.TrimSpace(r.Comment) == "" {
+			return "", errors.New("result Blocked needs a comment with the question")
+		}
+		if to == "Spec Review" && strings.TrimSpace(r.Plan) == "" {
+			return "", errors.New("result Spec Review needs a plan")
 		}
 		for _, i := range r.CheckedAC {
 			if i < 1 || i > len(t.Criteria) {

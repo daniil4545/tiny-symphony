@@ -91,16 +91,16 @@ A run:
 
 The daemon does not trust the agent's word; it checks facts it can see itself.
 
-| Failure | How the daemon sees it | What it does |
-| --- | --- | --- |
-| agent crashed | non-zero exit or killed by a signal | failed attempt |
-| agent hung | `run_timeout` passed | kills the process group, failed attempt |
-| task moved by a human | status differs from the one the run started in | kills the process group, no attempt counted |
-| no or bad result | `result.json` missing, not valid, or a transition not in the pipeline table | failed attempt |
-| spec not written | To Do result without a plan (unless `quick`) | failed attempt |
-| work not finished | result Review, but the worktree has uncommitted changes, the branch is not pushed, no PR or MR exists for it, or the project's `verify` command fails | failed attempt |
-| agent keeps failing | `max_attempts` failed attempts on one task | comments with the reason and log path, moves the task to Blocked |
-| daemon restarted | a pid file in a worktree with that process still alive | kills the leftover process group, then dispatches as usual |
+| ID | Failure | How the daemon sees it | What it does |
+| --- | --- | --- | --- |
+| S1 | agent crashed | non-zero exit or killed by a signal | failed attempt |
+| S2 | agent hung | `run_timeout` passed | kills the process group, failed attempt |
+| S3 | task moved by a human | status differs from the one the run started in | kills the process group, no attempt counted |
+| S4 | no or bad result | `result.json` missing, not valid, a transition not in the pipeline table, or Blocked without a comment | failed attempt |
+| S5 | spec not written | To Do result without a plan (unless `quick`) | failed attempt |
+| S6 | work not finished | result Review, but the worktree has uncommitted changes, the branch is not pushed, no PR or MR exists for it, or the project's `verify` command fails | failed attempt |
+| S7 | agent keeps failing | `max_attempts` failed attempts on one task | comments with the reason and log path, moves the task to Blocked |
+| S8 | daemon restarted | a pid file in a worktree with that process still alive | kills the leftover process group, then dispatches as usual |
 
 Failed attempts are retried with backoff (1, 5, 15 min); the reason of the last failure goes into
 the next prompt, so the agent knows what to fix.
@@ -161,14 +161,14 @@ cmd = ["codex", "exec", "--sandbox", "workspace-write", "{prompt}"]
 [agents.opencode]
 cmd = ["opencode", "run", "--auto", "{prompt}"]
 [agents.kimi]
-cmd = ["kimi", "--auto", "-p", "{prompt}"]
+cmd = ["kimi", "-p", "{prompt}"]
 [agents.pi]
 cmd = ["pi", "-p", "{prompt}"]
 ```
 
 `~` is expanded in path fields only. `{prompt}` is replaced by the rendered prompt as one argv element; no shell is involved. The flags
 above come from each CLI's `--help` on 2026-11-11 (claude 2.1.322, codex 0.167.1, opencode 2.2.6,
-kimi 2.5.2, pi 1.4.0) and are not run yet. A task with no `[projects]` entry is skipped with a log
+kimi 2.5.2, pi 1.4.0) and are not run yet, except kimi: on the live 2.5.2 `--auto` and `-y` do not work with `-p`, which already runs without asking. A task with no `[projects]` entry is skipped with a log
 line.
 
 ## Commands
@@ -211,11 +211,11 @@ What the daemon never does, whatever the input. Each line gets a test.
 - R2: Touches a task without an `agent:<name>` label.
 - R3: Applies a transition that is not in the pipeline table for the status the run started in.
 - R6: Runs a second instance against the same `workspace_root`.
-- Merges or pushes, or deletes an unmerged branch. It removes only worktrees of Done tasks.
+- R7: Merges or pushes, or deletes an unmerged branch. It removes only worktrees of Done tasks.
 - R4: Applies a result it has not checked.
 - R5: Passes the prompt through a shell.
 
-A line gets its ID together with its test; the lines without one wait for S3.
+A line gets its ID together with its test.
 
 ## Decisions
 

@@ -4,10 +4,14 @@ workspace_root = "~/.local/share/tiny-symphony/work"
 poll_seconds = 30
 max_agents = 2
 run_timeout_minutes = 60
+max_attempts = 3  # failed runs of one task before it goes to Blocked
+log_days = 14     # run logs older than this are deleted
 
 # Backlog.md project (the task's `project` field) -> git repository.
 [projects.toy]
 repo = "~/Dev/toy-repo"
+# verify = "make check"  # optional, must pass before a result goes to Review
+# forge = "github"       # optional: github (gh) or gitlab (glab); default from the remote host
 
 # A task needs the label agent:<name>, for example agent:claude.
 [agents.claude]
