@@ -33,16 +33,12 @@ func run() int {
 		return 1
 	}
 	if os.Args[1] == "check" {
-		dir := cfg.WorkspaceRoot
-		if _, err = os.Stat(dir); err != nil { // check creates nothing, tix needs an existing cwd
-			dir = os.TempDir()
-		}
-		if checkConfig(ctx, os.Stdout, cfg, newTracker(cfg, dir)) > 0 {
+		if checkConfig(ctx, os.Stdout, cfg, newTracker(cfg, existingDir(cfg))) > 0 {
 			return 1
 		}
 		return 0
 	}
-	if err = startProblems(ctx, cfg, newTracker(cfg, cfg.WorkspaceRoot)); err != nil {
+	if err = startProblems(ctx, cfg, newTracker(cfg, existingDir(cfg))); err != nil {
 		log.Error("config", "err", err)
 		return 1
 	}
@@ -58,6 +54,14 @@ func run() int {
 		return 1
 	}
 	return 0
+}
+
+// existingDir is workspace_root, or the temp dir while it is not created yet: tix needs an existing cwd.
+func existingDir(cfg *Config) string {
+	if _, err := os.Stat(cfg.WorkspaceRoot); err != nil {
+		return os.TempDir()
+	}
+	return cfg.WorkspaceRoot
 }
 
 // newTracker is tix run in dir, which is outside any git repository, so no list is narrowed to a project.

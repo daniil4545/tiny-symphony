@@ -123,7 +123,8 @@ func checkRepo(cfg *Config, repo string) error {
 	if strings.ContainsAny(repo, " \t") {
 		return fmt.Errorf("path %q has a space", repo)
 	}
-	if rel, err := filepath.Rel(repo, cfg.WorkspaceRoot); err == nil && !strings.HasPrefix(rel, "..") {
+	root, p := resolve(cfg.WorkspaceRoot), resolve(repo)
+	if rel, err := filepath.Rel(p, root); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return fmt.Errorf("workspace_root %s is inside the project path", cfg.WorkspaceRoot)
 	}
 	return nil
@@ -142,14 +143,29 @@ func rootInGit(root string) error {
 }
 
 // startProblems is what makes `run` refuse to start: the config rules and the project paths.
-// A tracker that does not answer is not one: the tick is skipped and tried again.
 func startProblems(ctx context.Context, cfg *Config, tr Tracker) error {
 	errs := configRules(cfg)
-	repos, _ := projectRepos(ctx, cfg, tr)
+	repos, err := projectRepos(ctx, cfg, tr)
+	if err != nil {
+		errs = append(errs, err)
+	}
 	for _, name := range slices.Sorted(maps.Keys(repos)) {
 		if err := checkRepo(cfg, repos[name]); err != nil {
 			errs = append(errs, fmt.Errorf("repo %s: %w", name, err))
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// resolve follows symlinks in the part of p that exists (macOS /tmp is /private/tmp).
+func resolve(p string) string {
+	for q, tail := p, ""; ; q = filepath.Dir(q) {
+		if r, err := filepath.EvalSymlinks(q); err == nil {
+			return filepath.Join(r, tail)
+		}
+		if filepath.Dir(q) == q {
+			return p
+		}
+		tail = filepath.Join(filepath.Base(q), tail)
+	}
 }

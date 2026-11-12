@@ -93,3 +93,35 @@ log_days = 3
 		t.Fatalf("defaults: %+v %+v", c.Cleanup, c.WatchPR)
 	}
 }
+
+// Acceptance 10: run refuses on a fresh, not yet created workspace_root, with the project path from the tracker.
+func TestRunRefusesSpaceInTrackerPath(t *testing.T) {
+	tx := tixEnv(t)
+	spaced := filepath.Join(t.TempDir(), "a b")
+	if err := os.Mkdir(spaced, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	tixDo(t, tx, "", "projects", "add", "sp", spaced)
+	cfgPath := filepath.Join(t.TempDir(), "config.toml")
+	write(t, cfgPath, "workspace_root = \""+filepath.Join(t.TempDir(), "fresh")+"\"\n[agents.a]\ncmd = [\"a\", \"{prompt}\"]\n", 0o600)
+	old := os.Args
+	os.Args = []string{"tiny-symphony", "run", "--once", "--config", cfgPath}
+	defer func() { os.Args = old }()
+	if got := run(); got != 1 {
+		t.Fatalf("run = %d, want 1", got)
+	}
+}
+
+func TestCheckRepoFollowsSymlinks(t *testing.T) {
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkRepo(&Config{WorkspaceRoot: filepath.Join(real, "work")}, link); err == nil {
+		t.Fatal("root inside a project reached through a symlink must fail")
+	}
+	if err := checkRepo(&Config{WorkspaceRoot: filepath.Join(filepath.Dir(real), "..x")}, real); err != nil {
+		t.Fatalf("sibling named ..x is not inside: %v", err)
+	}
+}
