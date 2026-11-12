@@ -15,7 +15,7 @@ build:
 test-fast:
 	go test -short ./... $(if $(RUN),-run $(RUN) -count=1,)
 
-# Step 2: integration tests need git and backlog on PATH.
+# Step 2: integration tests need git and tix on PATH.
 test:
 	go test -count=1 ./... $(if $(RUN),-run $(RUN),)
 
