@@ -34,8 +34,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Known
 
 - A task taken and returned between two ticks does not stop the agent; at worst it runs to the timeout.
-- claude, codex and kimi are not yet verified in a live run on 0.2.0. Codex runs with
-  `danger-full-access`.
+- Live runs on 0.2.0: claude passed (took the task, opened a PR, handed it over). codex committed
+  but opened no PR: its own approval policy refused a command. kimi was not run: its login had expired.
 
 ## [0.1.0] - 2026-11-12
 
