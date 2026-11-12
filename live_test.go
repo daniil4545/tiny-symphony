@@ -43,7 +43,7 @@ func TestLivePi(t *testing.T) {
 
 // liveRun is the paid smoke test: the real CLI does one small task. With LIVE_REPO (a GitHub URL) the task
 // runs in a fresh clone of it and must be handed over with a PR, which is closed afterwards; without it in a
-// local toy repo, where only the handover is checked.
+// local toy repo with no remote.
 func liveRun(t *testing.T, name string) {
 	t.Helper()
 	cmd := liveAgents[name]
@@ -82,7 +82,7 @@ func liveRun(t *testing.T, name string) {
 	failed := e.run(t)
 	got := e.get(t, id)
 	t.Logf("status=%s external=%q", got.Status, got.External)
-	if project == "live" && strings.HasPrefix(got.External, "https://") {
+	if url := os.Getenv("LIVE_REPO"); url != "" && strings.HasPrefix(got.External, url+"/pull/") {
 		t.Cleanup(func() {
 			out, err := exec.Command("gh", "pr", "close", got.External, "--delete-branch").CombinedOutput() //nolint:gosec,noctx // the test PR of this run
 			t.Logf("close %s: %v %s", got.External, err, out)

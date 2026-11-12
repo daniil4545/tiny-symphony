@@ -45,12 +45,12 @@ runs with `--sandbox danger-full-access`: with `workspace-write` it cannot commi
 
 | Agent | Command | Live run on 0.2.0 |
 | --- | --- | --- |
-| claude | `claude -p --permission-mode auto {prompt}` | passed 2026-11-12: took the task, opened a PR, handed over |
+| claude | `claude -p --permission-mode auto {prompt}` | passed 2026-11-12 on a clone of ci-sandbox: took the task, opened a PR, handed over |
 | codex | `codex exec --sandbox danger-full-access {prompt}` | not checked yet |
 | kimi | `kimi -p {prompt}` | not checked: the CLI login had expired |
 
 A live run is `make smoke AGENT=<name>` (paid, needs `PAID_OK=1 MAX_USD=1`); with
-`LIVE_REPO=<GitHub URL>` the task runs in a clone of that repository and its PR is closed after the run.
+`LIVE_REPO=<GitHub URL>` the task runs in a clone of that repository and the PR the agent puts into `external` is closed after the run.
 opencode and pi were never verified. Any other CLI with
 a one-shot mode is a few lines in `[agents.<name>]`.
 
