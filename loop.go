@@ -56,6 +56,7 @@ type sched struct {
 	done                 chan outcome
 	failed               int
 	tries                map[string]*tries
+	max                  map[string]int // max_attempts of the project, by task id
 	backoff              []time.Duration
 	trackerPause         time.Duration
 	stopping             bool
@@ -68,7 +69,7 @@ func newSched(cfg *Config, tr Tracker, log *slog.Logger) *sched {
 		timeout: time.Duration(cfg.RunTimeoutMinutes) * time.Minute,
 		grace:   10 * time.Second, trackerPause: 2 * time.Second,
 		running: map[string]*active{}, done: make(chan outcome),
-		tries: map[string]*tries{}, backoff: []time.Duration{time.Minute, 5 * time.Minute, 15 * time.Minute},
+		tries: map[string]*tries{}, max: map[string]int{}, backoff: []time.Duration{time.Minute, 5 * time.Minute, 15 * time.Minute},
 	}
 }
 
@@ -192,6 +193,7 @@ func (s *sched) tick(ctx context.Context) {
 		if _, busy := s.running[t.ID]; busy || !ok || repo == "" || live(t) || slices.Contains(t.Tags, "epic") {
 			continue
 		}
+		s.setLimit(t, repo)
 		attempt, lastErr, wait := s.attempt(ctx, t)
 		if wait || !s.ready(ctx, t) {
 			continue
@@ -221,6 +223,7 @@ func (s *sched) recoverOrphans(ctx context.Context, repos map[string]string) {
 			t.Claim != "" && t.Claim != actorName(name, t.ID) {
 			continue
 		}
+		s.setLimit(t, repos[t.Project])
 		if _, _, wait := s.attempt(ctx, t); wait {
 			continue
 		}
