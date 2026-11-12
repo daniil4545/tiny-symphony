@@ -165,9 +165,10 @@ func (s *sched) watchOne(ctx context.Context, t TrackerTask, dir, repo string, m
 	}
 	switch err = s.noteThen(ctx, t, text, move); {
 	case errors.Is(err, errChanged):
-	case err != nil:
-		s.log.Error("watch: tracker write failed", "task", t.ID, "err", err)
-	default:
+	default: // a failed move may follow a written note: keep the marks, so the note is not repeated
+		if err != nil {
+			s.log.Error("watch: tracker write failed", "task", t.ID, "err", err)
+		}
 		if err = saveMarks(dir, m); err != nil {
 			s.log.Warn("watch: marks not saved", "task", t.ID, "err", err)
 		}

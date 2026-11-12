@@ -3,12 +3,15 @@ package main
 import (
 	"context"
 	"path/filepath"
+	"time"
 )
 
 // cleanup removes the worktree and the merged branch of closed tasks that have no run. With the PR watch
 // on it waits until the watch has seen the PR merged or closed, or the task has no PR link.
 // git refuses a dirty tree and an unmerged branch; both stay. Log rotation is housekeeping's.
 func (s *sched) cleanup(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute) // a hung git must not stop the tick
+	defer cancel()
 	tasks, err := s.tr.List(ctx, []string{"closed"})
 	var repos map[string]string
 	if err == nil {
