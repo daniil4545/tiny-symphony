@@ -83,6 +83,9 @@ Checks: `make lint`
 | rules for agents working on this repo | `AGENTS.md` |
 | what changed | `CHANGELOG.md`, `git log` |
 | Symphony and agent CLI research | `docs/research/T-660-prior-art.md` |
+| the next version, a tix connector (draft) | `docs/specs/0.2.0.md` |
+| one task across tracker, daemon, git and GitHub | `docs/process.md` |
+| GitHub merge, CI and bot practices | `docs/research/T-704-github-pr-flow.md` |
 | the original pipeline drawing | `docs/flow.drawio` |
 
 MIT, see `LICENSE`.
