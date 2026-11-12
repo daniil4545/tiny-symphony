@@ -161,7 +161,7 @@ func (s *sched) tick(ctx context.Context) {
 	tasks, err := s.tr.List(ctx, s.cfg.Watch)
 	var repos map[string]string
 	if err == nil {
-		repos, err = s.tr.Repos(ctx)
+		repos, err = projectRepos(ctx, s.cfg, s.tr)
 	}
 	if ctx.Err() != nil {
 		return
