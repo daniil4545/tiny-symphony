@@ -113,15 +113,15 @@ func TestRunRefusesSpaceInTrackerPath(t *testing.T) {
 }
 
 func TestCheckRepoFollowsSymlinks(t *testing.T) {
-	real := t.TempDir()
+	target := t.TempDir()
 	link := filepath.Join(t.TempDir(), "link")
-	if err := os.Symlink(real, link); err != nil {
+	if err := os.Symlink(target, link); err != nil {
 		t.Fatal(err)
 	}
-	if err := checkRepo(&Config{WorkspaceRoot: filepath.Join(real, "work")}, link); err == nil {
+	if err := checkRepo(&Config{WorkspaceRoot: filepath.Join(target, "work")}, link); err == nil {
 		t.Fatal("root inside a project reached through a symlink must fail")
 	}
-	if err := checkRepo(&Config{WorkspaceRoot: filepath.Join(filepath.Dir(real), "..x")}, real); err != nil {
+	if err := checkRepo(&Config{WorkspaceRoot: filepath.Join(filepath.Dir(target), "..x")}, target); err != nil {
 		t.Fatalf("sibling named ..x is not inside: %v", err)
 	}
 }
