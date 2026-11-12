@@ -69,6 +69,8 @@ func (s *sched) limit(id string) int {
 func (s *sched) setLimit(t TrackerTask, repo string) {
 	if c, err := withProjectLayer(s.cfg, repo); err == nil {
 		s.max[t.ID] = c.MaxAttempts
+	} else {
+		delete(s.max, t.ID)
 	}
 }
 

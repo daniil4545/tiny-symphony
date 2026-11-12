@@ -126,7 +126,7 @@ func TestCheckRepoFollowsSymlinks(t *testing.T) {
 	}
 }
 
-// A project max_attempts below the central one blocks the task after that many failures, also after a restart.
+// A project max_attempts below the central one blocks the task after that many failures.
 func TestProjectMaxAttemptsBlocks(t *testing.T) {
 	e := newEnv(t, "noop")
 	write(t, filepath.Join(e.repo, ".tiny-symphony.toml"), "max_attempts = 1\n", 0o600)
