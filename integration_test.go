@@ -462,3 +462,48 @@ func TestBlockSkipsALiveForeignClaim(t *testing.T) {
 		t.Fatalf("daemon wrote %v", e.daemon(t))
 	}
 }
+
+// spec: Run
+// An agent task left in in_progress with no run: ours (or no claim) is reopened as a failed attempt, until Block.
+func TestOrphanInProgressIsReopened(t *testing.T) {
+	e := newEnv(t, "noop")
+	ours := e.create(t, "Ours", "agent:stub")
+	bare := e.create(t, "Bare", "agent:stub")
+	tixDo(t, e.tx, "", "take", ours, "--as", actorName("stub", ours))
+	tixDo(t, e.tx, "", "move", bare, "in_progress")
+	s := e.sched()
+
+	s.recoverOrphans(t.Context(), map[string]string{"toy": e.repo})
+	for _, id := range []string{ours, bare} {
+		if got := e.get(t, id); got.Status != "open" || got.Claim != "" || s.tries[id].N != 1 {
+			t.Fatalf("%s: task %+v, tries %+v", id, got, s.tries[id])
+		}
+	}
+	if note := lastNote(t, e, ours); !strings.Contains(note, "left in_progress with no run. Back to open") {
+		t.Fatalf("note = %q", note)
+	}
+	for range 2 { // the limit still holds
+		time.Sleep(2 * time.Millisecond)
+		tixDo(t, e.tx, "", "move", ours, "in_progress")
+		s.recoverOrphans(t.Context(), map[string]string{"toy": e.repo})
+	}
+	if got := e.get(t, ours); got.Status != "blocked" {
+		t.Fatalf("task %+v", got)
+	}
+}
+
+// spec: R2, R8
+// A foreign live claim and a task without agent: are left alone.
+func TestOrphanLeavesForeignAndUntagged(t *testing.T) {
+	e := newEnv(t, "noop")
+	foreign := e.create(t, "Foreign", "agent:stub")
+	plain := e.create(t, "Plain")
+	tixDo(t, e.tx, "", "take", foreign, "--as", "claude:other")
+	tixDo(t, e.tx, "", "move", plain, "in_progress")
+	s := e.sched()
+
+	s.recoverOrphans(t.Context(), map[string]string{"toy": e.repo})
+	if a, b := e.get(t, foreign), e.get(t, plain); a.Status != "in_progress" || b.Status != "in_progress" || len(e.daemon(t)) != 0 {
+		t.Fatalf("foreign %+v, plain %+v, daemon %v", a, b, e.daemon(t))
+	}
+}

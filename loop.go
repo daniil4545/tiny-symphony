@@ -173,6 +173,7 @@ func (s *sched) tick(ctx context.Context) {
 	}
 	s.housekeeping()
 	s.reconcile(ctx)
+	s.recoverOrphans(ctx, repos)
 	slices.SortFunc(tasks, func(a, b TrackerTask) int {
 		return cmp.Or(cmp.Compare(a.Rank, b.Rank), a.Created.Compare(b.Created), cmp.Compare(idNumber(a.ID), idNumber(b.ID)))
 	})
@@ -195,6 +196,40 @@ func (s *sched) tick(ctx context.Context) {
 			snap, err := s.runTask(ctx, stop, t, name, agent, repo, attempt, lastErr, s.log.With("task", t.ID))
 			s.done <- outcome{t.ID, snap, err}
 		}()
+	}
+}
+
+// recoverOrphans reopens agent tasks left in in_progress with no run: after a kill of the daemon, a reboot
+// or a failed write at the end of a run. Only an empty claim or our own actor's (live or expired) counts;
+// another holder's task and a task without an agent: tag are not touched. The reopen is a failed attempt.
+func (s *sched) recoverOrphans(ctx context.Context, repos map[string]string) {
+	tasks, err := s.tr.List(ctx, []string{"in_progress"})
+	if err != nil {
+		s.log.Warn("in_progress not read, orphans skipped", "err", err)
+		return
+	}
+	for _, t := range tasks {
+		name, _, ok := s.agentFor(t)
+		if _, busy := s.running[t.ID]; busy || !ok || repos[t.Project] == "" || slices.Contains(t.Tags, "epic") ||
+			t.Claim != "" && t.Claim != actorName(name, t.ID) {
+			continue
+		}
+		if _, _, wait := s.attempt(ctx, t); wait {
+			continue
+		}
+		reason := "task was left in_progress with no run"
+		err = s.noteThen(ctx, t, fmt.Sprintf("%s. Back to %s.", reason, s.cfg.ReopenStatus), func() error { return s.tr.Reopen(ctx, t.ID) })
+		switch {
+		case errors.Is(err, errChanged):
+		case err != nil:
+			s.log.Error("could not reopen the orphan", "task", t.ID, "err", err)
+		default:
+			s.log.Warn("orphan reopened", "task", t.ID, "claim", t.Claim)
+			t.Status, t.Claim = s.cfg.ReopenStatus, ""
+			if s.failure(t.ID, t, errors.New(reason)) {
+				s.block(ctx, t.ID)
+			}
+		}
 	}
 }
 
