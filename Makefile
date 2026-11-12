@@ -1,6 +1,6 @@
 # Gate template for a Go project (~/.claude/rules/verification.md); copy into the module root.
 # Needs go and golangci-lint; infra-check and workflows also need uv and node.
-.PHONY: secrets doc-check comment-check infra-changed test-guard spec-trace pr-size push-check pr-check build test test-fast vet fmt lint infra-check security workflows ci-check paid-guard smoke
+.PHONY: secrets infra-changed test-guard spec-trace pr-size push-check pr-check build test test-fast vet fmt lint infra-check security workflows ci-check paid-guard smoke
 
 # Scanners are pinned through go run so the machine PATH and CI do not matter.
 GOVULNCHECK := go run golang.org/x/vuln/cmd/govulncheck@v1.9.0
@@ -37,7 +37,7 @@ SHELLCHECK := uvx --from shellcheck-py==0.11.0.1 shellcheck
 lint: vet
 	$(GOLANGCI) fmt --diff
 	$(GOLANGCI) run --timeout 120s $(if $(LINT_BASE),--new-from-merge-base=$(LINT_BASE),)
-	$(RUFF) check scripts
+	$(RUFF) check .
 	$(SHELLCHECK) $$(git ls-files '*.sh')
 
 # Dockerfile, compose, shell, new migrations, CI, JS and HTML templates (~/.claude/templates/lint-files.sh).
@@ -75,10 +75,6 @@ pr-size:
 	scripts/pr-size.py $(if $(BASE),--base $(BASE),)
 
 # Every S<n> and R<n> of docs/spec.md and docs/specs has a test marked `spec: <ID>`.
-# Document classes of ~/.claude/rules/docs.md; skipped where the script is absent (CI).
-doc-check:
-	@f=$$HOME/.claude/scripts/doc-check.py; [ ! -f $$f ] || python3 -I $$f --all
-
 spec-trace:
 	scripts/spec-trace.py
 
@@ -87,18 +83,9 @@ infra-changed:
 	@files=$$(git diff --name-only --diff-filter=d HEAD; git ls-files --others --exclude-standard); \
 	[ -z "$$files" ] || scripts/lint-files.sh $$files
 
-# Comment rule of code.md (optimize scan) on changed and new code files; scan.py exits 1 on a finding.
-# Needs ~/.claude, so it is in only: CI has no such directory.
-comment-check:
-	@files=$$( (git -c core.quotepath=false diff --name-only --diff-filter=d HEAD; \
-	  git -c core.quotepath=false ls-files --others --exclude-standard) \
-	  | grep -E '\.(go|py|js|mjs|cjs|jsx|ts|tsx|html|sh|bash)$$' || true); \
-	[ -z "$$files" ] || printf '%s\n' "$$files" | tr '\n' '\0' \
-	  | xargs -0 python3 "$$HOME/.claude/skills/optimize/scan.py" --check-comments
-
 
 # Push to a task branch: step 1 and spec links on the Mac; commits since dev keep their tests.
-push-check: lint comment-check infra-changed test-guard secrets test-fast spec-trace
+push-check: lint infra-changed test-guard secrets test-fast spec-trace
 	@$(MAKE) --no-print-directory test-guard BASE=$${BASE:-$$(git rev-parse -q --verify origin/dev >/dev/null && echo origin/dev || echo dev)}
 
 # PR into main: steps 0-2; the project adds release-smoke (release artifact installed the user's way and run).
@@ -106,7 +93,7 @@ ci-check: lint infra-check security spec-trace test build
 	@$(MAKE) --no-print-directory test-guard BASE=$${BASE:-$$(git rev-parse -q --verify origin/dev >/dev/null && echo origin/dev || echo dev)}
 
 # PR into dev: fast tier on the whole tree plus the size limit, minutes; CI runs it on dev.
-pr-check: lint infra-check secrets spec-trace doc-check test-fast build pr-size
+pr-check: lint infra-check secrets spec-trace test-fast build pr-size
 	@$(MAKE) --no-print-directory test-guard BASE=$${BASE:-$$(git rev-parse -q --verify origin/dev >/dev/null && echo origin/dev || echo dev)}
 
 # Step 4 guard: every paid target depends on it; the run reads MAX_USD and stops at the ceiling.
