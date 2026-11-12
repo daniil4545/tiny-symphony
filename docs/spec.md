@@ -232,8 +232,8 @@ At least one agent is needed to do any work. A task whose project has no reposit
 with a log line.
 
 The agent commands above passed a live run on 0.1.0 only (claude 2.1.322, codex 0.167.1, kimi
-2.5.2; the codex sandbox differed). On 0.2.0 no agent is verified live yet; opencode and pi never
-were. An agent counts as supported after `make smoke AGENT=<name>` (paid, `PAID_OK=1 MAX_USD=1`).
+2.5.2; the codex sandbox differed). On 0.2.0 claude passed a live run on a clone of ci-sandbox; codex needs its own approval settings
+for the PR step and kimi was not run (login expired); opencode and pi never were. An agent counts as supported after `make smoke AGENT=<name>` (paid, `PAID_OK=1 MAX_USD=1`).
 
 ## Commands
 
