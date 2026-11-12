@@ -70,7 +70,7 @@ Statuses are names from the config; with tix 0.8 they are the five built-in ones
 | 8 | daemon | tix | after exit reads the task: out of the watched statuses and out of in_progress, so success | blocked or review |
 | 9 | human | GitHub, tix | reads the PR from the link, then closes the task, or comments and moves it back to a watched status | closed or open |
 | 10 | GitHub or human | GitHub | CI runs; the PR is merged (see Merge) | closed |
-| 11 | daemon (watch) | GitHub, tix | closed task with a PR link: merged, so a note "merged <sha>" | closed |
+| 11 | daemon (watch) | GitHub, tix | closed task with a PR link: merged, so a note "PR merged <sha>" | closed |
 | 12 | daemon (cleanup) | git | removes the worktree; `git branch -d` deletes the branch only if git sees it merged | closed |
 
 A comment from the human in step 9 sends the task back to step 2: the same worktree and branch,
@@ -128,5 +128,5 @@ the tracker follows PR events (opened, so In Progress; merged, so Done).
 | dispatch (core) | `tracker`, `watch`, `handoff_status`, `[agents.*]` | - |
 | tracker adapter | `tracker = "tix"` | - (one adapter per tracker behind one interface) |
 | PR watch | `[watch_pr] enabled`, `poll_minutes`, `max_reopens` | closed tasks are never checked against GitHub |
-| cleanup | `[cleanup] enabled`, `log_days` | worktrees and logs stay until removed by hand |
+| cleanup | `[cleanup] enabled`, `log_days` | worktrees stay until removed by hand; logs older than `log_days` still go |
 | check | `tiny-symphony check` | - |

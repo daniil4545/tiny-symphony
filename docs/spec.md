@@ -129,7 +129,7 @@ failed attempt; our own claim only as the next backoff step (the daemon died or 
 agent). Another holder's task is left alone.
 
 Daemon notes stay under 300 characters: the reason in a few words and the log path relative to
-`workspace_root` (`T-12-slug/.tiny-symphony/run-3.log`). Failed attempts retry after 1, 5 and 15
+`workspace_root` (`T-12-slug/.tiny-symphony/20261112T091500Z.log`, UTC start time). Failed attempts retry after 1, 5 and 15
 minutes; the reason (exit code, timeout, "task left taken") goes into the next prompt. After
 `max_attempts` the daemon writes a note with the reason and the log path, calls `Block`, and resets
 the count, so a human who moves the task back gets a fresh limit. Attempts and reopens live in
@@ -255,8 +255,8 @@ look like a failure, a loop that costs a run each time); `reopen_status` is not 
 | Module | What | Switch |
 | --- | --- | --- |
 | dispatch | Collect, dispatch, reconcile, outcome, retries, lock | always on |
-| PR watch | every `poll_minutes`, for each closed task with a worktree, no running run and a PR link in `external`: `gh pr view --json state,mergedAt,mergeCommit,mergeStateStatus,statusCheckRollup`. Merged: note "merged <sha of mergeCommit>", the task is done for the watch. A failed check (`FAILURE`, `ERROR`, `TIMED_OUT`, `CANCELLED`, `STARTUP_FAILURE`, `ACTION_REQUIRED`; pending, neutral and skipped are not failures) or `mergeStateStatus` `DIRTY`: note with the reason, `Reopen`, reopens + 1. Closed unmerged: one note. At `max_reopens`: one note "PR does not land, needs a human", no more reopens. Each of these marks (merged, closed, limit) is kept in `.tiny-symphony/watch`, so a restart writes no note twice. A `gh` error: log line, next round | `[watch_pr] enabled` |
-| cleanup | for each closed task with no running run: remove its worktree (`git worktree remove`, which refuses a dirty tree), `git branch -d` (refuses an unmerged branch, so a squashed branch stays); logs older than `log_days`. With the watch on it waits until the watch has seen the PR merged or closed, or the task has no PR link | `[cleanup] enabled` |
+| PR watch | every `poll_minutes`, for each closed task with a worktree, no running run and a PR link in `external`: `gh pr view --json state,mergedAt,mergeCommit,mergeStateStatus,statusCheckRollup`. Merged: note "PR merged <sha of mergeCommit>", the task is done for the watch. A failed check (`FAILURE`, `ERROR`, `TIMED_OUT`, `CANCELLED`, `STARTUP_FAILURE`, `ACTION_REQUIRED`; pending, neutral and skipped are not failures) or `mergeStateStatus` `DIRTY`: note "PR needs work: <reason>. Back to <reopen_status> (reopen N of M)", `Reopen`, reopens + 1. Closed unmerged: one note "PR closed without merge. The task stays closed, the branch stays." At `max_reopens`: one note "PR does not land (<reason>), reopened N times. Needs a human.", no more reopens. Each of these marks (merged, closed, limit) is kept in `.tiny-symphony/watch`, so a restart writes no note twice. A `gh` error: log line, next round | `[watch_pr] enabled` |
+| cleanup | for each closed task with no running run: remove its worktree (`git worktree remove`, which refuses a dirty tree), `git branch -d` (refuses an unmerged branch, so a squashed branch stays). Logs older than `log_days` are removed on every tick, with this module on or off. With the watch on it waits until the watch has seen the PR merged or closed, or the task has no PR link | `[cleanup] enabled` |
 | check | see Commands | command |
 
 The watch never switches auto-merge on and never merges: a human merges (D8). A task leaves the
