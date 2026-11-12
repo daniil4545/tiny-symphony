@@ -3,34 +3,33 @@
 ## Project
 
 A small daemon that runs a coding agent CLI per tracker task in a git worktree. Single user, own
-machine. The code is 0.1.0: it watches a Backlog.md board and applies the agent's result file;
-`docs/spec.md` is its canon. In work: 0.2.0, a connector to tix where the agent writes the tracker
-itself; its spec is `docs/specs/0.2.0.md` and the process across systems is `docs/process.md`. A
-0.2.0 task follows `docs/specs/0.2.0.md`; T-724 folds it into `docs/spec.md`. Read the Philosophy
-of the spec your task follows before adding anything. Structure: `docs/architecture.md`.
-Tasks are in tix (`tix ctx`), project `tiny-symphony`; the 0.2.0 epic is T-725.
+machine. The code is 0.2.0, a connector to tix: the agent writes the tracker itself, the daemon
+only finds tagged tasks, runs agents and says when something went wrong. `docs/spec.md` is the
+canon; the process across tracker, git and GitHub is `docs/process.md`. Read the Philosophy of the
+spec before adding anything. Structure: `docs/architecture.md`. Tasks are in tix (`tix ctx`),
+project `tiny-symphony`.
 
 ## Principles
 
 - One job. A feature that is not in the spec is a question to the user, not a change.
 - Stdlib first. A new dependency needs a line in `docs/spec.md` Decisions.
 - The tracker is the state; in memory only runs and attempt counts. No database.
-- 0.1.0: the daemon is the only tracker writer. 0.2.0: the agent writes the tracker, the daemon
-  only `Note`, `Block` and `Reopen` after a guarding read (R8).
+- The agent writes the tracker; the daemon only `Note`, `Block` and `Reopen`, each after a
+  guarding read (R8).
 - Test against the real agent CLIs before calling an agent supported (`make smoke`, paid, after approval).
 
 ## Stack
 
 Go (version in `go.mod`), one `package main`, one dependency (`github.com/BurntSushi/toml`). Runs on
-macOS and Linux; needs `git`, `tix` 0.8.1 (0.2.0), `backlog` 1.55 (until T-721 removes it) and `gh` or `glab`. CI: GitHub Actions.
+macOS and Linux; needs `git`, `tix` 0.8.1 and `gh`. CI: GitHub Actions.
 
 ## Structure
 
 | Path | What |
 | --- | --- |
 | `*.go` | the daemon, one package; each `*_test.go` sits next to its file |
-| `examples/` | sample config and prompts, also used by tests |
-| `docs/` | `spec.md`, `architecture.md`, `research/` |
+| `examples/` | sample config, also used by tests |
+| `docs/` | `spec.md`, `architecture.md`, `process.md`, `research/` |
 | `scripts/`, `Makefile`, `.golangci.yml`, `.github/` | gates; do not edit in a task |
 
 ## Commands
@@ -39,7 +38,7 @@ macOS and Linux; needs `git`, `tix` 0.8.1 (0.2.0), `backlog` 1.55 (until T-721 r
 | --- | --- |
 | build | `make build` |
 | fast tests (no network) | `make test-fast` |
-| all tests (need `git`, `backlog`, `tix`) | `make test` |
+| all tests (need `git`, `tix`) | `make test` |
 | format, vet, lint | `make fmt`, `make vet`, `make lint` |
 | before a push | `make push-check` |
 | before a PR into dev | `make pr-check` |
@@ -56,10 +55,9 @@ macOS and Linux; needs `git`, `tix` 0.8.1 (0.2.0), `backlog` 1.55 (until T-721 r
 
 ## Critical invariants
 
-Boundaries R1-R7 of `docs/spec.md`; 0.2.0 drops R3 and R4 and adds R8 and R9
-(`docs/specs/0.2.0.md`). In short:
+Boundaries R1, R2, R5-R9 of `docs/spec.md`. In short:
 
 - The daemon never touches a task without an `agent:<name>` label.
 - It starts agents only inside `workspace_root`, never through a shell.
-- 0.1.0: it applies only checked results and only transitions of the pipeline table.
+- Its tracker writes are only `Note`, `Block` and `Reopen`; agent commands come only from the central config.
 - It never merges, pushes or deletes an unmerged branch; one daemon per `workspace_root`.

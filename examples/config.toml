@@ -14,7 +14,7 @@ prompt_append = ""            # added to the built-in prompt
 [repos]                       # project to repository, for projects the tracker has no path for
 # toy = "~/Dev/toy-repo"
 
-[watch_pr]                    # the module itself comes later
+[watch_pr]                    # reports a merged PR or a red check as a note; never merges
 enabled = false
 poll_minutes = 5
 max_reopens = 2               # PRs that did not land, per task, before the daemon stops reopening
