@@ -174,6 +174,12 @@ func (s *sched) tick(ctx context.Context) {
 	s.housekeeping()
 	s.reconcile(ctx)
 	s.recoverOrphans(ctx, repos)
+	if s.cfg.WatchPR.Enabled {
+		s.watchPRs(ctx)
+	}
+	if s.cfg.Cleanup.Enabled {
+		s.cleanup(ctx)
+	}
 	slices.SortFunc(tasks, func(a, b TrackerTask) int {
 		return cmp.Or(cmp.Compare(a.Rank, b.Rank), a.Created.Compare(b.Created), cmp.Compare(idNumber(a.ID), idNumber(b.ID)))
 	})
