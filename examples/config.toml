@@ -9,8 +9,19 @@ poll_seconds = 30
 max_agents = 2
 run_timeout_minutes = 60
 max_attempts = 3              # failed runs of one task before it is blocked
-log_days = 14                 # run logs older than this are deleted
 prompt_append = ""            # added to the built-in prompt
+
+[repos]                       # project to repository, for projects the tracker has no path for
+# toy = "~/Dev/toy-repo"
+
+[watch_pr]                    # the module itself comes later
+enabled = false
+poll_minutes = 5
+max_reopens = 2               # PRs that did not land, per task, before the daemon stops reopening
+
+[cleanup]
+enabled = true
+log_days = 14                 # run logs older than this are deleted
 
 # A task needs the tag agent:<name>, for example agent:claude. The agent writes the tracker itself.
 [agents.claude]
