@@ -42,6 +42,10 @@ func run() int {
 		}
 		return 0
 	}
+	if err = startProblems(ctx, cfg, newTracker(cfg, cfg.WorkspaceRoot)); err != nil {
+		log.Error("config", "err", err)
+		return 1
+	}
 	lock, err := lockWorkspace(cfg.WorkspaceRoot)
 	if err != nil {
 		log.Error("lock", "err", err)
@@ -67,8 +71,12 @@ func actorName(agent, id string) string { return "tiny-symphony:" + agent + ":" 
 // runTask does one run and returns the task as the run ended. ctx is for the tracker and git; stop ends only the agent.
 // The tracker is read and written on a context that a signal does not cancel, so a write is never cut short.
 func (s *sched) runTask(ctx, stop context.Context, t TrackerTask, name string, a Agent, repo string, attempt int, lastErr string, l *slog.Logger) (TrackerTask, error) {
-	cfg, wctx, actor := s.cfg, context.WithoutCancel(ctx), actorName(name, t.ID)
-	t, err := s.tr.Get(wctx, t.ID)
+	wctx, actor := context.WithoutCancel(ctx), actorName(name, t.ID)
+	cfg, err := withProjectLayer(s.cfg, repo) // read at each dispatch; a bad file is a failed attempt
+	if err != nil {
+		return t, err
+	}
+	t, err = s.tr.Get(wctx, t.ID)
 	if err != nil {
 		return t, fmt.Errorf("task %s: %w", t.ID, err)
 	}
@@ -88,7 +96,7 @@ func (s *sched) runTask(ctx, stop context.Context, t TrackerTask, name string, a
 		return t, err
 	}
 	l.Info("agent starting", "dir", dir, "attempt", attempt, "actor", actor)
-	logPath, runErr := runAgent(stop, cfg.WorkspaceRoot, dir, a, prompt, s.timeout, s.grace)
+	logPath, runErr := runAgent(stop, cfg.WorkspaceRoot, dir, a, prompt, min(s.timeout, time.Duration(cfg.RunTimeoutMinutes)*time.Minute), s.grace)
 	if errors.Is(context.Cause(stop), errMoved) {
 		return t, errMoved
 	}
