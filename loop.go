@@ -145,7 +145,7 @@ func (s *sched) reconcile(ctx context.Context) {
 			continue
 		}
 		r.taken = r.taken || t.Claim == r.actor
-		if !slices.Contains(t.Tags, "agent:"+r.agent) || r.taken && (s.watching(t.Status) || live(t) && t.Claim != r.actor) {
+		if !slices.ContainsFunc(t.Tags, func(g string) bool { return norm(g) == "agent:"+r.agent }) || r.taken && (s.watching(t.Status) || live(t) && t.Claim != r.actor) {
 			s.log.Info("stopping run, task changed hands", "task", id, "status", t.Status, "claim", t.Claim)
 			r.stop(errMoved)
 		}

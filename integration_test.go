@@ -278,6 +278,7 @@ func TestWriteIsGuardedByTheDecidingRead(t *testing.T) {
 		t.Fatalf("err %v, daemon wrote %v", err, e.daemon(t))
 	}
 	// the same for Block
+	snap.Claim = "" // as after a Reopen
 	s.tries[id] = &tries{N: 3, Last: "boom", snap: snap}
 	s.block(t.Context(), id)
 	if len(e.daemon(t)) != 0 || s.tries[id] != nil || e.get(t, id).Status != "blocked" {
@@ -431,5 +432,33 @@ func TestRunSkippedWhenTagRemovedSinceTheList(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(e.cfg.WorkspaceRoot); len(entries) != 0 || len(e.starts(t)) != 0 {
 		t.Fatalf("a workspace was made for a task without the tag: %v", entries)
+	}
+}
+
+// spec: R2
+// The tag was removed during the run: the daemon writes nothing, not even a note.
+func TestNoWriteWhenTagRemovedDuringTheRun(t *testing.T) {
+	e := newEnv(t, "noop")
+	id := e.create(t, "Untagged", "agent:stub")
+	s := e.sched()
+	name := "tiny-symphony:stub:" + id
+	tixDo(t, e.tx, "", "take", id, "--as", name)
+	snap := e.get(t, id) // in_progress, our claim, still tagged
+	tixDo(t, e.tx, "", "set", id, "tags=human")
+	if _, err := s.judge(t.Context(), snap, name, nil, "x.log", s.log); !errors.Is(err, errMoved) || len(e.daemon(t)) != 0 {
+		t.Fatalf("err %v, daemon wrote %v", err, e.daemon(t))
+	}
+}
+
+// Block does not move a task that someone holds.
+func TestBlockSkipsALiveForeignClaim(t *testing.T) {
+	e := newEnv(t, "noop")
+	id := e.create(t, "Held", "agent:stub")
+	s := e.sched()
+	tixDo(t, e.tx, "", "take", id, "--as", "human:1")
+	s.tries[id] = &tries{N: 3, Last: "boom", snap: e.get(t, id)}
+	s.block(t.Context(), id)
+	if len(e.daemon(t)) != 0 || e.get(t, id).Status != "in_progress" {
+		t.Fatalf("daemon wrote %v", e.daemon(t))
 	}
 }

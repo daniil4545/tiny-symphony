@@ -132,13 +132,13 @@ func (s *sched) pause(id string) {
 // errChanged means the task moved since the read that decided a write, so nothing was written.
 var errChanged = errors.New("task changed since the deciding read")
 
-// guarded runs a write only if the task still has the status, claim and external of snap.
+// guarded runs a write only if the task still has an agent tag and the status, claim and external of snap.
 func (s *sched) guarded(ctx context.Context, snap TrackerTask, write func() error) error {
 	now, err := s.tr.Get(ctx, snap.ID)
 	if err != nil {
 		return fmt.Errorf("guard read of %s: %w", snap.ID, err)
 	}
-	if norm(now.Status) != norm(snap.Status) || now.Claim != snap.Claim || now.External != snap.External {
+	if _, _, ok := s.agentFor(now); !ok || norm(now.Status) != norm(snap.Status) || now.Claim != snap.Claim || now.External != snap.External {
 		s.log.Info("not writing, the task changed", "task", snap.ID, "status", now.Status, "claim", now.Claim)
 		return errChanged
 	}
@@ -162,6 +162,10 @@ func (s *sched) block(ctx context.Context, id string) {
 	snap, err := tr.snap, error(nil)
 	if snap.ID == "" { // after a restart: the task as it is now
 		snap, err = s.tr.Get(ctx, id)
+	}
+	if err == nil && live(snap) {
+		s.log.Warn("not blocking, the task is held by someone", "task", id, "claim", snap.Claim)
+		return
 	}
 	msg := fmt.Sprintf("gave up after %d failed attempts: %s", tr.N, tr.Last)
 	if err == nil {

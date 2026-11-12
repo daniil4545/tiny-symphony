@@ -107,6 +107,9 @@ func (s *sched) judge(ctx context.Context, now TrackerTask, actor string, runErr
 		reason = runErr.Error()
 	}
 	failed := fmt.Errorf("%s; log %s", reason, logRel)
+	write := func(text string, move func() error) error {
+		return s.trackerRetry(func() error { return s.noteThen(ctx, now, text, move) })
+	}
 	switch st := norm(now.Status); {
 	case st != "in_progress" && !s.watching(st):
 		l.Info("run done", "outcome", "success", "status", now.Status, "log", logRel)
@@ -114,10 +117,10 @@ func (s *sched) judge(ctx context.Context, now TrackerTask, actor string, runErr
 	case st != "in_progress":
 		return now, failed
 	case live(now) && now.Claim != actor:
-		err := s.noteThen(ctx, now, fmt.Sprintf("left in_progress by %s; the agent may have missed --as. Log: %s", now.Claim, logRel), nil)
+		err := write(fmt.Sprintf("left in_progress by %s; the agent may have missed --as. Log: %s", now.Claim, logRel), nil)
 		return now, failedOr(err, failed)
 	}
-	err := s.noteThen(ctx, now, fmt.Sprintf("%s. Back to %s. Log: %s", reason, s.cfg.ReopenStatus, logRel), func() error { return s.tr.Reopen(ctx, now.ID) })
+	err := write(fmt.Sprintf("%s. Back to %s. Log: %s", reason, s.cfg.ReopenStatus, logRel), func() error { return s.tr.Reopen(ctx, now.ID) })
 	if err == nil {
 		now.Status, now.Claim = s.cfg.ReopenStatus, "" // what the move did, for the guard of a later Block
 	}
