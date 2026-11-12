@@ -226,11 +226,12 @@ What the daemon never does, whatever the input. Each line gets a test.
 
 - R1: Starts an agent outside `workspace_root`, or with a cwd other than the task's worktree.
 - R2: Touches a task without an `agent:<name>` label.
-- R3: Applies a transition that is not in the pipeline table for the status the run started in.
 - R6: Runs a second instance against the same `workspace_root`.
 - R7: Merges or pushes, or deletes an unmerged branch. It removes only worktrees of Done tasks.
-- R4: Applies a result it has not checked.
 - R5: Passes the prompt through a shell.
+
+R3 (a transition outside the pipeline table) and R4 (an unchecked result) went away in 0.2.0 with
+`result.json`.
 
 A line gets its ID together with its test.
 
