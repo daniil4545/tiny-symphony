@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -105,18 +104,6 @@ func TestApplyWritesStatusLast(t *testing.T) {
 	}
 }
 
-// A status that is not on the board is refused before anything is written, so Blocked cannot repeat its comment.
-func TestApplyUnknownStatusWritesNothing(t *testing.T) {
-	e := newEnv(t, `{}`)
-	e.create(t, "x", "agent:stub")
-	if err := e.bl.Apply(t.Context(), "T-1", Result{Comment: "c"}, "Nope"); err == nil {
-		t.Fatal("an unknown status must fail")
-	}
-	if got := e.view(t, "T-1"); len(got.Comments) != 0 || got.Status != "To Do" {
-		t.Fatalf("status = %s, comments = %v", got.Status, got.Comments)
-	}
-}
-
 func TestHungBacklogTimesOut(t *testing.T) {
 	bin := t.TempDir()
 	write(t, filepath.Join(bin, "backlog"), "#!/bin/sh\nexec sleep 30\n", 0o700)
@@ -142,39 +129,5 @@ func TestLoadParsesView(t *testing.T) {
 	}
 	if task.Description != "d" || task.Project != "toy" || task.Comments[0] != "c1" || !task.Criteria[0].Checked {
 		t.Fatalf("task = %+v", task)
-	}
-}
-
-// spec: R2
-func TestStillOursChecksLabelAndStatus(t *testing.T) {
-	task := Task{Status: " to do", Labels: []string{"agent:claude"}}
-	for name, c := range map[string]struct {
-		task          Task
-		agent, status string
-		want          bool
-	}{
-		"same":           {task, "claude", "To Do", true},
-		"label removed":  {Task{Status: "To Do"}, "claude", "To Do", false},
-		"other agent":    {task, "codex", "To Do", false},
-		"status changed": {task, "claude", "Review", false},
-	} {
-		if got := stillOurs(c.task, c.agent, c.status); got != c.want {
-			t.Errorf("%s: got %v", name, got)
-		}
-	}
-}
-
-// spec: R2
-func TestRunTaskSkipsWhenLabelRemoved(t *testing.T) {
-	view := `{"task":{"id":"T-1","title":"x","status":"To Do","labels":["human"],"project":"toy"}}`
-	bl := &Backlog{run: func(context.Context, ...string) ([]byte, error) { return []byte(view), nil }}
-	cfg := &Config{WorkspaceRoot: t.TempDir()}
-	listed := Task{ID: "T-1", Status: "To Do", Labels: []string{"agent:claude"}}
-	s := newSched(cfg, t.TempDir(), bl, slog.New(slog.DiscardHandler))
-	if err := s.runTask(t.Context(), t.Context(), listed, Agent{Cmd: []string{"false"}}, Project{}, 1, "", s.log); err != nil {
-		t.Fatal(err)
-	}
-	if entries, _ := os.ReadDir(cfg.WorkspaceRoot); len(entries) != 0 {
-		t.Fatalf("a workspace was made for a task without the label: %v", entries)
 	}
 }

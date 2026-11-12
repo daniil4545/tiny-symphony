@@ -16,7 +16,7 @@ import (
 
 // checkConfig is `tiny-symphony check`: one line per check, nothing is run, written or created.
 // It returns the number of failed checks.
-func checkConfig(ctx context.Context, w io.Writer, cfg *Config, configDir string, bl *Backlog) int {
+func checkConfig(ctx context.Context, w io.Writer, cfg *Config, tr Tracker) int {
 	failed := 0
 	report := func(name string, err error) {
 		if err != nil {
@@ -29,14 +29,8 @@ func checkConfig(ctx context.Context, w io.Writer, cfg *Config, configDir string
 	if len(cfg.Agents) == 0 {
 		report("agents", errors.New("none configured"))
 	}
-	if len(cfg.Projects) == 0 {
-		report("projects", errors.New("none configured"))
-	}
-	_, err := os.Stat(cfg.BacklogDir)
-	if err == nil {
-		_, err = bl.List(ctx)
-	}
-	report("tracker "+cfg.BacklogDir, err)
+	_, err := tr.List(ctx, cfg.Watch)
+	report("tracker "+cfg.Tracker, err)
 	report("workspace_root "+cfg.WorkspaceRoot, checkRoot(cfg.WorkspaceRoot))
 	for _, name := range slices.Sorted(maps.Keys(cfg.Agents)) {
 		cmd := cfg.Agents[name].Cmd
@@ -45,14 +39,6 @@ func checkConfig(ctx context.Context, w io.Writer, cfg *Config, configDir string
 			err = errors.New("cmd has no {prompt}")
 		}
 		report("agent "+name, err)
-	}
-	for _, name := range slices.Sorted(maps.Keys(cfg.Projects)) {
-		report("project "+name, checkProject(ctx, cfg.Projects[name]))
-	}
-	for _, status := range []string{"To Do", "In Progress", "Rework"} {
-		file := promptFile(configDir, status)
-		_, err = renderPrompt(file, Task{}, "", 1, "")
-		report("prompt "+file, err)
 	}
 	return failed
 }
@@ -73,19 +59,4 @@ func checkRoot(root string) error {
 			return fmt.Errorf("workspace_root: %w", err)
 		}
 	}
-}
-
-func checkProject(ctx context.Context, p Project) error {
-	if _, err := os.Stat(filepath.Join(p.Repo, ".git")); err != nil {
-		return fmt.Errorf("%s is not a git repository", p.Repo)
-	}
-	if _, err := exec.LookPath("git"); err != nil {
-		return errors.New("git not in PATH")
-	}
-	url, _ := git(ctx, p.Repo, "remote", "get-url", "origin")
-	tool, _ := forgeTool(p.Forge, url)
-	if _, err := exec.LookPath(tool); err != nil {
-		return fmt.Errorf("%s not in PATH", tool)
-	}
-	return nil
 }

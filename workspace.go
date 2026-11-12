@@ -23,7 +23,7 @@ func pathID(id string) string {
 }
 
 // branchName is T-<N>-<slug>, used when the worktree is created.
-func branchName(t Task) string {
+func branchName(t TrackerTask) string {
 	slug := strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(t.Title), "-"), "-")
 	if len(slug) > 40 {
 		slug = strings.Trim(slug[:40], "-")
@@ -69,8 +69,8 @@ func git(ctx context.Context, dir string, args ...string) (string, error) {
 	return strings.TrimSpace(out.String()), nil
 }
 
-// prepareWorkspace adds the task's worktree under root, or reuses it, and clears the previous result.
-func prepareWorkspace(ctx context.Context, root, repo string, t Task) (dir, branch string, err error) {
+// prepareWorkspace adds the task's worktree under root, or reuses it.
+func prepareWorkspace(ctx context.Context, root, repo string, t TrackerTask) (dir, branch string, err error) {
 	if dir, err = findWorkspace(root, t.ID); err != nil {
 		return "", "", err
 	}
@@ -99,9 +99,6 @@ func prepareWorkspace(ctx context.Context, root, repo string, t Task) (dir, bran
 	}
 	if err = excludeStateDir(ctx, dir); err != nil {
 		return "", "", err
-	}
-	if err = os.Remove(filepath.Join(dir, stateDir, "result.json")); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return "", "", fmt.Errorf("clear result: %w", err)
 	}
 	return dir, branch, nil
 }

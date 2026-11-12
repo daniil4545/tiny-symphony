@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -46,7 +45,7 @@ func liveRun(t *testing.T, name string) {
 	if _, err := exec.LookPath(cmd[0]); err != nil {
 		t.Fatalf("%s CLI not on PATH", cmd[0])
 	}
-	e := newEnv(t, `{}`)
+	e := newEnv(t, "")
 	t.Cleanup(func() {
 		if !t.Failed() {
 			return
@@ -57,18 +56,17 @@ func liveRun(t *testing.T, name string) {
 			t.Logf("%s:\n%.3000s", l, out)
 		}
 	})
-	e.cfg.Agents = map[string]Agent{name: {Cmd: cmd}}
+	e.cfg.Agents = map[string]Agent{}
 	e.cfg.RunTimeoutMinutes = 10
-	backlogCmd(t, e.blDir, "task", "create", "Add a sum function", "-d",
-		"Add a Go function Sum(a, b int) int to the toy repo, with a test.",
-		"--ac", "Sum returns a+b", "--ac", "go test passes", "-l", "agent:"+name, "--project", "toy")
+	id := e.createIn(t, "Add a sum function", "toy", "- [ ] go test passes\nAdd a Go function Sum(a, b int) int to the toy repo, with a test.\n", "agent:"+name)
+	e.cfg.Agents[name] = Agent{Cmd: cmd}
 
-	if failed := e.run(t.Context()); failed != 0 {
+	if failed := e.run(t); failed != 0 {
 		t.Fatalf("failed = %d", failed)
 	}
-	got := e.view(t, "T-1")
-	t.Logf("status=%s plan=%q", got.Status, got.Plan)
-	if got.Status != "Spec Review" || strings.TrimSpace(got.Plan) == "" {
+	got := e.get(t, id)
+	t.Logf("status=%s external=%q", got.Status, got.External)
+	if got.Status != e.cfg.HandoffStatus || got.External == "" {
 		t.Fatalf("task = %+v", got)
 	}
 }

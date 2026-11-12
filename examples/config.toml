@@ -1,24 +1,21 @@
-# Copy to ~/.config/tiny-symphony/config.toml; the prompts/ folder goes next to it.
-backlog_dir = "~/Dev/backlog"
-workspace_root = "~/.local/share/tiny-symphony/work"
+# Copy to ~/.config/tiny-symphony/config.toml.
+tracker = "tix"
+workspace_root = "~/.local/share/tiny-symphony/work"  # must not be inside a git repository
+watch = ["open"]              # statuses where agents pick work up
+handoff_status = "blocked"    # where the agent puts a finished task
+blocked_status = "blocked"    # where the daemon moves a task after max_attempts
+reopen_status = "open"        # where the daemon returns a task; must be in watch
 poll_seconds = 30
 max_agents = 2
 run_timeout_minutes = 60
-max_attempts = 3  # failed runs of one task before it goes to Blocked
-log_days = 14     # run logs older than this are deleted
+max_attempts = 3              # failed runs of one task before it is blocked
+log_days = 14                 # run logs older than this are deleted
+prompt_append = ""            # added to the built-in prompt
 
-# Backlog.md project (the task's `project` field) -> git repository.
-[projects.toy]
-repo = "~/Dev/toy-repo"
-# verify = "make check"  # optional, must pass before a result goes to Review
-# forge = "github"       # optional: github (gh) or gitlab (glab); default from the remote host
-
-# A task needs the label agent:<name>, for example agent:claude.
+# A task needs the tag agent:<name>, for example agent:claude. The agent writes the tracker itself.
 [agents.claude]
 cmd = ["claude", "-p", "--permission-mode", "auto", "{prompt}"]
-# Verified by `make smoke AGENT=<name>` (see README): codex, kimi.
-# [agents.codex]
-# cmd = ["codex", "exec", "--sandbox", "workspace-write", "{prompt}"]
+# [agents.codex]  # workspace-write keeps .git read-only and the network off: no commit, no push
+# cmd = ["codex", "exec", "--sandbox", "danger-full-access", "{prompt}"]
 # [agents.kimi]
 # cmd = ["kimi", "-p", "{prompt}"]
-# Not verified: opencode (`opencode run --auto {prompt}`), pi (`pi -p {prompt}`); see docs/spec.md.

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"os"
@@ -13,21 +14,19 @@ import (
 const defaultConfigPath = "~/.config/tiny-symphony/config.toml"
 
 type Config struct {
-	BacklogDir        string             `toml:"backlog_dir"`
-	WorkspaceRoot     string             `toml:"workspace_root"`
-	PollSeconds       int                `toml:"poll_seconds"`
-	MaxAgents         int                `toml:"max_agents"`
-	RunTimeoutMinutes int                `toml:"run_timeout_minutes"`
-	MaxAttempts       int                `toml:"max_attempts"`
-	LogDays           int                `toml:"log_days"`
-	Projects          map[string]Project `toml:"projects"`
-	Agents            map[string]Agent   `toml:"agents"`
-}
-
-type Project struct {
-	Repo   string `toml:"repo"`
-	Verify string `toml:"verify"`
-	Forge  string `toml:"forge"`
+	Tracker           string           `toml:"tracker"`
+	WorkspaceRoot     string           `toml:"workspace_root"`
+	Watch             []string         `toml:"watch"`
+	HandoffStatus     string           `toml:"handoff_status"`
+	BlockedStatus     string           `toml:"blocked_status"`
+	ReopenStatus      string           `toml:"reopen_status"`
+	PromptAppend      string           `toml:"prompt_append"`
+	PollSeconds       int              `toml:"poll_seconds"`
+	MaxAgents         int              `toml:"max_agents"`
+	RunTimeoutMinutes int              `toml:"run_timeout_minutes"`
+	MaxAttempts       int              `toml:"max_attempts"`
+	LogDays           int              `toml:"log_days"`
+	Agents            map[string]Agent `toml:"agents"`
 }
 
 type Agent struct {
@@ -56,10 +55,24 @@ func loadConfig(path string) (*Config, error) {
 	if _, err := toml.DecodeFile(expandHome(path), &c); err != nil {
 		return nil, fmt.Errorf("config %s: %w", path, err)
 	}
-	if c.BacklogDir == "" || c.WorkspaceRoot == "" {
-		return nil, errors.New("config: backlog_dir and workspace_root are required")
+	if c.WorkspaceRoot == "" {
+		return nil, errors.New("config: workspace_root is required")
 	}
-	c.BacklogDir = expandHome(c.BacklogDir)
+	if c.Tracker == "" {
+		c.Tracker = "tix"
+	}
+	if c.Tracker != "tix" {
+		return nil, fmt.Errorf("config: tracker %q is not supported, only tix", c.Tracker)
+	}
+	if len(c.Watch) == 0 {
+		c.Watch = []string{"open"}
+	}
+	c.HandoffStatus = cmp.Or(norm(c.HandoffStatus), "blocked")
+	c.BlockedStatus = cmp.Or(norm(c.BlockedStatus), "blocked")
+	c.ReopenStatus = cmp.Or(norm(c.ReopenStatus), "open")
+	for i, w := range c.Watch {
+		c.Watch[i] = norm(w)
+	}
 	c.WorkspaceRoot = expandHome(c.WorkspaceRoot)
 	if c.PollSeconds <= 0 {
 		c.PollSeconds = 30
@@ -76,12 +89,6 @@ func loadConfig(path string) (*Config, error) {
 	if c.LogDays <= 0 {
 		c.LogDays = 14
 	}
-	projects := map[string]Project{}
-	for name, p := range c.Projects {
-		p.Repo = expandHome(p.Repo)
-		projects[norm(name)] = p
-	}
-	c.Projects = projects
 	agents := map[string]Agent{}
 	for name, a := range c.Agents {
 		if len(a.Cmd) == 0 {
