@@ -70,6 +70,10 @@ An agent counts as supported only after a passing smoke run (`make smoke AGENT=<
 
 Any other CLI with a one-shot mode is a few lines in `[agents.<name>]`.
 
+## Development
+
+Checks: `make lint`
+
 ## Docs
 
 | Question | Where |
