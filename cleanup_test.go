@@ -44,7 +44,7 @@ func TestCleanupKeepsUnmergedBranchWithUpstream(t *testing.T) {
 		t.Fatal(err)
 	}
 	write(t, filepath.Join(dir, "work.txt"), "x", 0o600)
-	for _, args := range [][]string{{"add", "work.txt"}, {"commit", "-q", "-m", "work"}, {"push", "-q", "-u", "origin", branch}} {
+	for _, args := range [][]string{{"add", "work.txt"}, {"-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "work"}, {"push", "-q", "-u", "origin", branch}} {
 		if _, err := git(t.Context(), dir, args...); err != nil {
 			t.Fatal(err)
 		}
