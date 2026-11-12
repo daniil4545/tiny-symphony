@@ -1,8 +1,8 @@
 # tiny-symphony: process map
 
-Draft for 0.2.0, 2026-11-12. One task from the board to `main`, across four systems: the tracker
+0.2.0, 2026-11-12. One task from the board to `main`, across four systems: the tracker
 (tix), the daemon, the git repository and GitHub. Who moves what, who writes where, what happens
-when a step fails. Rules of each step: `docs/specs/0.2.0.md`. Facts about GitHub:
+when a step fails. Rules of each step: `docs/spec.md`. Facts about GitHub:
 `docs/research/T-704-github-pr-flow.md`.
 
 ## Principles
@@ -70,7 +70,7 @@ Statuses are names from the config; with tix 0.8 they are the five built-in ones
 | 8 | daemon | tix | after exit reads the task: out of the watched statuses and out of in_progress, so success | blocked or review |
 | 9 | human | GitHub, tix | reads the PR from the link, then closes the task, or comments and moves it back to a watched status | closed or open |
 | 10 | GitHub or human | GitHub | CI runs; the PR is merged (see Merge) | closed |
-| 11 | daemon (watch) | GitHub, tix | closed task with a PR link: merged, so a note "merged <sha>" | closed |
+| 11 | daemon (watch) | GitHub, tix | closed task with a PR link: merged, so a note "PR merged <sha>" | closed |
 | 12 | daemon (cleanup) | git | removes the worktree; `git branch -d` deletes the branch only if git sees it merged | closed |
 
 A comment from the human in step 9 sends the task back to step 2: the same worktree and branch,
@@ -88,7 +88,7 @@ the agent reads the comments in `tix show`.
 | 5 | another session took the task first | tix refuses `take` | the agent exits; the task is in_progress with that claim: one note, failed attempt, no move |
 | 4-7 | the human removed the tag, moved the taken task back to open, or someone stole the claim | daemon: next tick | run stopped, no attempt; the human's move stands |
 | 8 | the human moved the task between the run's end and the daemon's write | daemon: fresh read before writing, the task changed | the daemon writes nothing |
-| 7 | the agent closed the task itself | nobody: closed looks the same whoever closed it | success; the review gate was skipped (open question Q3) |
+| 7 | the agent closed the task itself | nobody: closed looks the same whoever closed it | success; the review gate was skipped (`docs/spec.md`, D10) |
 | 7 | no PR link in `external` | the watch skips the task | cleanup removes the worktree; the unmerged branch stays |
 | 10 | a check failed or the PR conflicts after close | daemon (watch): `statusCheckRollup`, `mergeStateStatus` `DIRTY` | note with the reason, task back to open; the agent fixes it on the same branch; at most `max_reopens` times, then one note |
 | 10 | PR closed without merge | daemon (watch): `state` `CLOSED`, no `mergedAt` | one note; the task stays closed, the branch stays |
@@ -96,7 +96,7 @@ the agent reads the comments in `tix show`.
 | any | `gh` does not answer | daemon (watch) | log line, next round |
 | any | daemon crashed | daemon on start: pid files | leftover agents killed, attempts kept in the worktree |
 
-## Merge: variants, not decided
+## Merge: variants, C chosen
 
 GitHub facts that shape this:
 
@@ -117,7 +117,7 @@ GitHub facts that shape this:
 | B. Daemon at the human's gate | GitHub, after the daemon runs `gh pr merge --auto --squash --match-head-commit <sha>` when the human moves the task to a merging status; where no required check exists, the daemon reads `statusCheckRollup` first | the status move | a required check, or the daemon's own check |
 | C. Human | the human in GitHub | the merge button | nothing |
 
-Until this is decided the watch only reports: it never switches auto-merge on and never merges
+The owner chose C (`docs/spec.md`, D8): the watch only reports: it never switches auto-merge on and never merges
 (boundary R7). B is the closest to Symphony's "Merging" status. Linear works the other way round:
 the tracker follows PR events (opened, so In Progress; merged, so Done).
 
@@ -128,5 +128,5 @@ the tracker follows PR events (opened, so In Progress; merged, so Done).
 | dispatch (core) | `tracker`, `watch`, `handoff_status`, `[agents.*]` | - |
 | tracker adapter | `tracker = "tix"` | - (one adapter per tracker behind one interface) |
 | PR watch | `[watch_pr] enabled`, `poll_minutes`, `max_reopens` | closed tasks are never checked against GitHub |
-| cleanup | `[cleanup] enabled`, `log_days` | worktrees and logs stay until removed by hand |
+| cleanup | `[cleanup] enabled`, `log_days` | worktrees stay until removed by hand; logs older than `log_days` still go |
 | check | `tiny-symphony check` | - |

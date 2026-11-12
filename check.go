@@ -54,6 +54,10 @@ func checkConfig(ctx context.Context, w io.Writer, cfg *Config, tr Tracker) int 
 		}
 		report("agent "+name, err)
 	}
+	if cfg.WatchPR.Enabled {
+		_, err = exec.LookPath("gh")
+		report("gh for [watch_pr]", err)
+	}
 	return failed
 }
 

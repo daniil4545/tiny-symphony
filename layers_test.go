@@ -18,7 +18,7 @@ func prompts(t *testing.T, e *env) []string {
 	return out
 }
 
-// spec: S4
+// spec: S4, R9
 // Acceptance 7: a project file adds to the prompt after the central one; one with [agents.x] fails the dispatch.
 func TestProjectLayerDispatch(t *testing.T) {
 	e := newEnv(t, "handoff")

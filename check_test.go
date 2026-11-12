@@ -135,6 +135,18 @@ func TestCheckRules(t *testing.T) {
 }
 
 // check prints the merged config of every project and fails on a bad project file.
+// With the PR watch on, check needs gh on PATH; with it off, gh is not looked for.
+func TestCheckGhForWatch(t *testing.T) {
+	cfg, tr := checkEnv(t)
+	if n, out := runCheck(cfg, tr); n != 0 || strings.Contains(out, "gh") {
+		t.Fatalf("watch off: got %d:\n%s", n, out)
+	}
+	cfg.WatchPR.Enabled = true
+	if n, out := runCheck(cfg, tr); n != 1 || !strings.Contains(out, "FAIL gh for [watch_pr]") {
+		t.Fatalf("watch on, no gh: got %d:\n%s", n, out)
+	}
+}
+
 func TestCheckPrintsProjects(t *testing.T) {
 	cfg, tr := checkEnv(t)
 	cfg.HandoffStatus, cfg.BlockedStatus, cfg.ReopenStatus = "blocked", "closed", "open"

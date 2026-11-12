@@ -3,6 +3,40 @@
 All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.0] - 2026-11-12
+
+### Changed
+
+- The tracker is tix. The agent takes the task, writes notes, opens the PR, puts the link into
+  `external` and hands the task over itself; the daemon reads where the task ended up. Success no
+  longer depends on a result file or the exit code.
+- A new config: `watch`, `handoff_status`, `blocked_status`, `reopen_status`, `[repos]`. An optional
+  `.tiny-symphony.toml` per project adds to the prompt and may lower `max_attempts` and
+  `run_timeout_minutes`; it cannot name agent commands.
+- Every daemon write (a note, a move to blocked or back) follows a fresh read and is skipped if
+  a human changed the task meanwhile.
+- `check` validates the watched statuses, the repositories and `gh`, and prints the config per project.
+
+### Added
+
+- A task left taken by a crashed run or a killed daemon returns to `open`; a run stops when a
+  human removes the tag or takes the task back.
+- PR watch: a note when the PR is merged, a note and a reopen when a check fails, at most
+  `max_reopens` times. Off by default.
+- Cleanup of worktrees and branches of closed tasks, switchable.
+- The task is handed over under the actor `tiny-symphony:<agent>:<T-N>`, so its work is told apart
+  from yours in the tix history.
+
+### Removed
+
+- Backlog.md support, `result.json`, the status pipeline and the per-status prompts.
+
+### Known
+
+- A task taken and returned between two ticks does not stop the agent; at worst it runs to the timeout.
+- claude, codex and kimi are not yet verified in a live run on 0.2.0. Codex runs with
+  `danger-full-access`.
+
 ## [0.1.0] - 2026-11-12
 
 ### Added
