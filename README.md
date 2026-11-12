@@ -6,7 +6,7 @@ git worktree, checks the result and writes it back to the board. Cut down from
 
 ## Stage
 
-v0.0.1, a prototype for one user on one machine. Works and covered by tests: the polling loop with
+v0.1.0, a prototype for one user on one machine. Works and covered by tests: the polling loop with
 bounded concurrency, worktree per task, result checks (a plan for To Do; for Review a clean tree, a
 pushed branch, a PR or MR, the project's `verify` command), retries with backoff, Blocked after
 `max_attempts`, stop when a human moves the card, a lock against a second daemon, cleanup of Done
@@ -16,7 +16,7 @@ is read at start only. See `docs/spec.md`, Left out and Open questions.
 
 ## Quick start
 
-Needs Go 1.25, `git`, [Backlog.md](https://github.com/MrLesk/Backlog.md) 1.55 (`backlog`), `gh` or
+Needs Go 1.26, `git`, [Backlog.md](https://github.com/MrLesk/Backlog.md) 1.55 (`backlog`), `gh` or
 `glab` for PRs, and an agent CLI from the table below.
 
 1. Build: `git clone https://github.com/daniil4545/tiny-symphony && cd tiny-symphony && go install .`
