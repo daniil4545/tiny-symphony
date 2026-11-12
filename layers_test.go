@@ -125,3 +125,14 @@ func TestCheckRepoFollowsSymlinks(t *testing.T) {
 		t.Fatalf("sibling named ..x is not inside: %v", err)
 	}
 }
+
+// A project max_attempts below the central one blocks the task after that many failures.
+func TestProjectMaxAttemptsBlocks(t *testing.T) {
+	e := newEnv(t, "noop")
+	write(t, filepath.Join(e.repo, ".tiny-symphony.toml"), "max_attempts = 1\n", 0o600)
+	id := e.create(t, "Lazy", "agent:stub")
+	drive(t, e.sched(), 1)
+	if got := e.get(t, id); len(e.starts(t)) != 1 || got.Status != "blocked" {
+		t.Fatalf("starts %v, task %+v, want blocked after one failure (central limit %d)", e.starts(t), got, e.cfg.MaxAttempts)
+	}
+}

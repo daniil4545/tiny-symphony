@@ -56,6 +56,24 @@ func (s *sched) housekeeping() {
 	}
 }
 
+// limit is max_attempts of the task: the one of its project if the repository sets it, else the central one.
+func (s *sched) limit(id string) int {
+	if n := s.max[id]; n > 0 {
+		return n
+	}
+	return s.cfg.MaxAttempts
+}
+
+// setLimit reads the project layer of the task's repository. A bad file leaves the central value;
+// runTask reports it as a failed attempt.
+func (s *sched) setLimit(t TrackerTask, repo string) {
+	if c, err := withProjectLayer(s.cfg, repo); err == nil {
+		s.max[t.ID] = c.MaxAttempts
+	} else {
+		delete(s.max, t.ID)
+	}
+}
+
 // tries is the failed-attempt record of a task, saved in .tiny-symphony/attempts of its worktree.
 // Only the pause before the next attempt is in memory.
 type tries struct {
@@ -83,8 +101,8 @@ func (s *sched) getTries(id string) *tries {
 		return nil
 	}
 	tr := &tries{}
-	if json.Unmarshal(data, tr) != nil || tr.N < 0 || tr.N > s.cfg.MaxAttempts {
-		tr = &tries{N: s.cfg.MaxAttempts, Last: "attempts file is damaged"}
+	if json.Unmarshal(data, tr) != nil || tr.N < 0 || tr.N > s.limit(id) {
+		tr = &tries{N: s.limit(id), Last: "attempts file is damaged"}
 	}
 	s.tries[id] = tr
 	return tr
@@ -116,7 +134,7 @@ func (s *sched) failure(id string, snap TrackerTask, err error) bool {
 			s.log.Warn("attempts not saved", "task", id, "err", e)
 		}
 	}
-	return tr.N >= s.cfg.MaxAttempts
+	return tr.N >= s.limit(id)
 }
 
 // pause is a stop without an attempt: the next backoff step, the count stays.
@@ -188,7 +206,7 @@ func (s *sched) attempt(ctx context.Context, t TrackerTask) (n int, lastErr stri
 	if tr == nil {
 		return 1, "", false
 	}
-	if tr.N >= s.cfg.MaxAttempts { // an earlier write of Block failed
+	if tr.N >= s.limit(t.ID) { // an earlier write of Block failed
 		s.block(ctx, t.ID)
 		return 0, "", true
 	}
