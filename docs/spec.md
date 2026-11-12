@@ -1,6 +1,6 @@
 # tiny-symphony: spec
 
-Status: accepted 2026-11-11, implemented in v0.0.1. Inspired by [OpenAI Symphony](https://github.com/openai/symphony)
+Status: accepted 2026-11-11, implemented in v0.1.0. Inspired by [OpenAI Symphony](https://github.com/openai/symphony)
 ([SPEC.md](https://github.com/openai/symphony/blob/main/SPEC.md), read at `be10a1b`).
 
 tiny-symphony is a small daemon that watches a task tracker, takes the tasks marked for an agent
