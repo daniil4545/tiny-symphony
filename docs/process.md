@@ -27,7 +27,7 @@ when a step fails. Rules of each step: `docs/specs/0.2.0.md`. Facts about GitHub
 | tix | task, status, claim, notes, `external` | agent, human, daemon (note, blocked, open) | `tix list --json`, `tix show --json`, `tix projects` |
 | daemon | running runs, retry times in memory; attempts file in the worktree | daemon | - |
 | git repo | worktree `T-<N>-<slug>`, commits, branch | daemon (worktree add and remove), agent (commit, push) | `git worktree list` |
-| GitHub | PR, CI, merge | agent (PR), GitHub (CI, merge), human (merge, review) | `gh pr view --json state,mergedAt,mergeStateStatus,statusCheckRollup` |
+| GitHub | PR, CI, merge | agent (PR), GitHub (CI, merge), human (merge, review) | `gh pr view --json state,mergedAt,mergeCommit,mergeStateStatus,statusCheckRollup` |
 
 ## Main path
 
@@ -87,7 +87,7 @@ the agent reads the comments in `tix show`.
 | 4-7 | the same task failed `max_attempts` times | daemon | note with the reason and log path, task to blocked, count reset; the human decides |
 | 5 | another session took the task first | tix refuses `take` | the agent exits; the task is in_progress with that claim: one note, failed attempt, no move |
 | 4-7 | the human removed the tag, moved the taken task back to open, or someone stole the claim | daemon: next tick | run stopped, no attempt; the human's move stands |
-| 8 | the human moved the task between the run's end and the daemon's write | daemon: fresh read before writing | the daemon writes nothing |
+| 8 | the human moved the task between the run's end and the daemon's write | daemon: fresh read before writing, the task changed | the daemon writes nothing |
 | 7 | the agent closed the task itself | nobody: closed looks the same whoever closed it | success; the review gate was skipped (open question Q3) |
 | 7 | no PR link in `external` | the watch skips the task | cleanup removes the worktree; the unmerged branch stays |
 | 10 | a check failed or the PR conflicts after close | daemon (watch): `statusCheckRollup`, `mergeStateStatus` `DIRTY` | note with the reason, task back to open; the agent fixes it on the same branch; at most `max_reopens` times, then one note |
@@ -114,7 +114,7 @@ GitHub facts that shape this:
 | Variant | Who merges | Human gate | Needs |
 | --- | --- | --- | --- |
 | A. Agent at PR time | GitHub, after the agent runs `gh pr merge --auto` | none: the PR lands on green CI, before the human looks | a required check on `main` |
-| B. Daemon at the human's gate | GitHub, after the daemon runs `gh pr merge --auto --match-head-commit <sha>` when the human moves the task to a merging status; where no required check exists, the daemon reads `statusCheckRollup` first | the status move | a required check, or the daemon's own check |
+| B. Daemon at the human's gate | GitHub, after the daemon runs `gh pr merge --auto --squash --match-head-commit <sha>` when the human moves the task to a merging status; where no required check exists, the daemon reads `statusCheckRollup` first | the status move | a required check, or the daemon's own check |
 | C. Human | the human in GitHub | the merge button | nothing |
 
 Until this is decided the watch only reports: it never switches auto-merge on and never merges

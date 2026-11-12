@@ -20,7 +20,7 @@ auto-merge is safe only where `main` has a required check. Confidence medium.
 | `gh pr merge --auto` merges at once when the PR is CLEAN, HAS_HOOKS or UNSTABLE; auto-merge is set only when it is BLOCKED, BEHIND and alike | [merge.go#L593](https://github.com/cli/cli/blob/233b470d3a189e89cf6fa69624e11c3fa9387d81/pkg/cmd/pr/merge/merge.go#L593) |
 | PR authors cannot approve their own PRs; owners and admins can merge without an approving review | [docs](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/approving-a-pull-request-with-required-reviews) |
 | Auto-merge is turned off by a push from a user without write access, or when the base changes | [docs](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/incorporating-changes-from-a-pull-request/automatically-merging-a-pull-request) |
-| `gh pr view --json` gives `state`, `mergedAt`, `mergeable`, `mergeStateStatus`, `statusCheckRollup`, `reviewDecision`, `autoMergeRequest` | [gh manual](https://cli.github.com/manual/gh_pr_view) |
+| `gh pr view --json` gives `state`, `mergedAt`, `mergeable`, `mergeStateStatus`, `statusCheckRollup`, `reviewDecision`, `autoMergeRequest`, `mergeCommit` | [gh manual](https://cli.github.com/manual/gh_pr_view) |
 | A merge queue pays off with many PRs a day from many users | [docs](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches) |
 | The owner's repositories: auto-merge allowed and `main` protected by the required check `gate` on tarn, tix, famulus, ci-sandbox; no rulesets anywhere; private repositories on the free plan answer 403 for protection rules | `gh api repos/daniil4545/<repo>/branches/main/protection`, 2026-11-12 |
 
@@ -86,9 +86,10 @@ Checked 2026-11-12: Backlog.md 1.55.3 from `--help`; Linear, GitHub and Jira fro
 | note by a bot | `--comment --comment-author` | comment by the app user ([docs](https://linear.app/developers/agents)) | comment by a GitHub App, not read | not read |
 | status with a reason | `-s` plus `--comment` in one call | not read | only open or closed with `state_reason` ([docs](https://docs.github.com/en/rest/issues/issues)) | transitions ([docs](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issues/)) |
 | link field | `--ref` | attachments ([docs](https://linear.app/developers/attachments)) | linked PRs, not read | remote links ([docs](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-remote-links/)) |
-| project to repository | none | only repository suggestions for an agent session ([docs](https://linear.app/developers/agent-interaction)) | the repository itself | not read |
+| project to repository | the repository that holds the backlog | only repository suggestions for an agent session ([docs](https://linear.app/developers/agent-interaction)) | the repository itself | not read |
 | polling budget | local | 2500 requests an hour per API key ([docs](https://linear.app/developers/rate-limiting)) | 5000 an hour for a GitHub App ([docs](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)) | points per hour, 429 ([docs](https://developer.atlassian.com/cloud/jira/platform/rate-limiting/)) |
 
 Differences the contract absorbs: only tix has an expiring claim; no tracker but tix maps a project
 to a repository path; GitHub Issues keeps statuses as labels or a Projects field. A poll every 30 s
-over three statuses is about 360 requests an hour, inside every budget above.
+over three statuses is about 360 list requests an hour plus one `Get` per candidate and per run end,
+inside every budget above.
