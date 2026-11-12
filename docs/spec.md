@@ -272,10 +272,9 @@ What the daemon never does, whatever the input. Each line gets a test.
 - R6: Runs a second instance against the same `workspace_root`.
 - R7: Merges, pushes, or deletes an unmerged branch.
 - R8: Writes the tracker other than `Note`, `Block` and `Reopen`, or without a guarding `Get`.
-- R9 Takes an agent command from anywhere but the central config.
+- R9: Takes an agent command from anywhere but the central config.
 
-R3 and R4 of 0.1.0 (pipeline transitions, checked result) went away with the result file. R9 has
-no ID mark in tests yet; its case is the project file with `[agents.x]` (Acceptance 7).
+R3 and R4 of 0.1.0 (pipeline transitions, checked result) went away with the result file.
 
 ## Decisions
 
