@@ -81,15 +81,16 @@ the agent reads the comments in `tix show`.
 | Step | Failure | Who sees it | What happens |
 | --- | --- | --- | --- |
 | 4-7 | agent crashed or timed out before `take` | daemon: task still in a watched status | failed attempt; retry after 1, 5, 15 min with the reason in the prompt |
-| 5-7 | agent crashed, timed out or exited with the task still taken | daemon: in_progress with our claim | failed attempt; note, task back to open, retry |
+| 5-7 | agent crashed, timed out or exited with the task still taken | daemon: in_progress with our claim, or with none | failed attempt; note, task back to open, retry |
+| any | the project `.tiny-symphony.toml` is bad | daemon at dispatch | failed attempt; backoff, then blocked with the reason |
 | 7 | agent handed over and then exited with an error | daemon: task out of the watched statuses | success; the tracker state decides |
 | 4-7 | the same task failed `max_attempts` times | daemon | note with the reason and log path, task to blocked, count reset; the human decides |
-| 5 | another session holds the task | tix refuses `take` | the agent exits; the task stays in open with that claim and is skipped while the claim lives |
+| 5 | another session took the task first | tix refuses `take` | the agent exits; the task is in_progress with that claim: one note, failed attempt, no move |
 | 4-7 | the human removed the tag | daemon: next tick | run stopped, no attempt |
 | 8 | the human moved the task between the run's end and the daemon's write | daemon: fresh read before writing | the daemon writes nothing |
-| 7 | the agent closed the task itself | daemon: closed by our actor | success with a note "review skipped" (open question Q3) |
+| 7 | the agent closed the task itself | nobody: closed looks the same whoever closed it | success; the review gate was skipped (open question Q3) |
 | 7 | no PR link in `external` | the watch skips the task | cleanup removes the worktree; the unmerged branch stays |
-| 10 | a check failed or the PR conflicts after close | daemon (watch): `statusCheckRollup`, `mergeStateStatus` `DIRTY` | note with the reason, task back to open; the agent fixes it on the same branch; at most `max_reopens` times |
+| 10 | a check failed or the PR conflicts after close | daemon (watch): `statusCheckRollup`, `mergeStateStatus` `DIRTY` | note with the reason, task back to open; the agent fixes it on the same branch; at most `max_reopens` times, then one note |
 | 10 | PR closed without merge | daemon (watch): `state` `CLOSED`, no `mergedAt` | one note; the task stays closed, the branch stays |
 | any | tix does not answer | daemon: CLI error or timeout | tick skipped, runs left alone |
 | any | `gh` does not answer | daemon (watch) | log line, next round |
