@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"os/exec"
 	"strings"
@@ -120,6 +121,10 @@ func TestTixTaskParse(t *testing.T) {
 		ID: "T-5", Status: " In_Progress ", Claim: "a:b until 2026-01-02T03:04", Created: "2026-01-02T03:04:05",
 		Body: "x\nAfter: T-1\nAfter: T-2 T-3\nnot After: T-9\n",
 	}
+	if err := json.Unmarshal([]byte(`{"rank":1.5}`), &j); err != nil || j.Rank != 1.5 {
+		t.Fatalf("fractional rank: %v, %v", j.Rank, err)
+	}
+	j.Rank = 0
 	got, err := j.task()
 	if err != nil || got.Status != "in_progress" || got.Claim != "a:b" || got.ClaimUntil != "2026-01-02T03:04" ||
 		strings.Join(got.After, ",") != "T-1,T-2,T-3" || got.Created.Year() != 2026 {

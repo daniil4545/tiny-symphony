@@ -22,7 +22,7 @@ type TrackerTask struct {
 	Claim              string // the holder, "" when nobody holds the task
 	ClaimUntil         string // expiry as the tracker prints it, may be ""
 	External           string
-	Rank               int
+	Rank               float64
 	Created            time.Time
 	After              []string // ids from the "After:" lines of the body; only Get fills it
 }
@@ -57,6 +57,7 @@ func (x *Tix) run(ctx context.Context, args ...string) ([]byte, error) {
 	}
 	cmd := exec.CommandContext(ctx, "tix", args...) //nolint:gosec // fixed binary, args built by this package
 	cmd.Dir = x.Dir
+	cmd.WaitDelay = 5 * time.Second // a child holding stdout must not outlive the timeout
 	var out, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &stderr
 	if err := cmd.Run(); err != nil {
@@ -77,7 +78,7 @@ type tixJSON struct {
 	Tags     []string `json:"tags"`
 	Claim    string   `json:"claim"`
 	External string   `json:"external"`
-	Rank     int      `json:"rank"`
+	Rank     float64  `json:"rank"`
 	Created  string   `json:"created"`
 	Body     string   `json:"body"`
 }
