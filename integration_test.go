@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -460,5 +461,83 @@ func TestBlockSkipsALiveForeignClaim(t *testing.T) {
 	s.block(t.Context(), id)
 	if len(e.daemon(t)) != 0 || e.get(t, id).Status != "in_progress" {
 		t.Fatalf("daemon wrote %v", e.daemon(t))
+	}
+}
+
+// spec: Run
+// An agent task left in in_progress with no run: ours (or no claim) is reopened as a failed attempt, until Block.
+func TestOrphanInProgressIsReopened(t *testing.T) {
+	e := newEnv(t, "noop")
+	ours := e.create(t, "Ours", "agent:stub")
+	bare := e.create(t, "Bare", "agent:stub")
+	tixDo(t, e.tx, "", "take", ours, "--as", actorName("stub", ours))
+	tixDo(t, e.tx, "", "move", bare, "in_progress")
+	s := e.sched()
+
+	s.recoverOrphans(t.Context(), map[string]string{"toy": e.repo})
+	for _, id := range []string{ours, bare} {
+		if got := e.get(t, id); got.Status != "open" || got.Claim != "" {
+			t.Fatalf("%s: task %+v", id, got)
+		}
+	}
+	if s.failed != 2 || s.tries[bare].N != 1 || s.tries[ours].N != 0 { // own claim: a pause, no attempt
+		t.Fatalf("failed %d, tries %+v %+v", s.failed, s.tries[ours], s.tries[bare])
+	}
+	if note := lastNote(t, e, ours); !strings.Contains(note, "left in_progress with no run. Back to open") {
+		t.Fatalf("note = %q", note)
+	}
+	for range 2 { // the limit still holds for an empty claim
+		time.Sleep(2 * time.Millisecond)
+		tixDo(t, e.tx, "", "move", bare, "in_progress")
+		s.recoverOrphans(t.Context(), map[string]string{"toy": e.repo})
+	}
+	if got := e.get(t, bare); got.Status != "blocked" {
+		t.Fatalf("task %+v", got)
+	}
+}
+
+// failingReopen is a Tracker whose Reopen fails after the note was written.
+type failingReopen struct {
+	Tracker
+	notes int
+}
+
+func (f *failingReopen) Note(ctx context.Context, id, text string) error {
+	f.notes++
+	return f.Tracker.Note(ctx, id, text)
+}
+func (f *failingReopen) Reopen(context.Context, string) error { return errors.New("tix down") }
+
+// A failed Reopen after the note must not repeat the note on the next tick.
+func TestOrphanReopenFailureWritesOneNote(t *testing.T) {
+	e := newEnv(t, "noop")
+	id := e.create(t, "Stuck", "agent:stub")
+	tixDo(t, e.tx, "", "take", id, "--as", actorName("stub", id))
+	s := e.sched()
+	s.backoff = []time.Duration{time.Hour}
+	f := &failingReopen{Tracker: s.tr}
+	s.tr = f
+
+	for range 2 {
+		s.recoverOrphans(t.Context(), map[string]string{"toy": e.repo})
+	}
+	if f.notes != 1 || e.get(t, id).Status != "in_progress" {
+		t.Fatalf("notes %d, task %+v", f.notes, e.get(t, id))
+	}
+}
+
+// spec: R2, R8
+// A foreign live claim and a task without agent: are left alone.
+func TestOrphanLeavesForeignAndUntagged(t *testing.T) {
+	e := newEnv(t, "noop")
+	foreign := e.create(t, "Foreign", "agent:stub")
+	plain := e.create(t, "Plain")
+	tixDo(t, e.tx, "", "take", foreign, "--as", "claude:other")
+	tixDo(t, e.tx, "", "move", plain, "in_progress")
+	s := e.sched()
+
+	s.recoverOrphans(t.Context(), map[string]string{"toy": e.repo})
+	if a, b := e.get(t, foreign), e.get(t, plain); a.Status != "in_progress" || b.Status != "in_progress" || len(e.daemon(t)) != 0 {
+		t.Fatalf("foreign %+v, plain %+v, daemon %v", a, b, e.daemon(t))
 	}
 }
