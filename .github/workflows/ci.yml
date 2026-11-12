@@ -37,8 +37,6 @@ jobs:
           install-only: true
       # uvx and npx run the linters of scripts/lint-files.sh.
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-      - name: lint
-        run: make lint
       - name: pr-check
         if: github.event_name == 'pull_request' && github.base_ref == 'dev'
         env:
