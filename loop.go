@@ -201,7 +201,8 @@ func (s *sched) tick(ctx context.Context) {
 
 // recoverOrphans reopens agent tasks left in in_progress with no run: after a kill of the daemon, a reboot
 // or a failed write at the end of a run. Only an empty claim or our own actor's (live or expired) counts;
-// another holder's task and a task without an agent: tag are not touched. The reopen is a failed attempt.
+// another holder's task and a task without an agent: tag are not touched. A reopen of an empty claim is a failed attempt; of our own claim a pause only (the daemon died or
+// stopped, which is not the agent's fault).
 func (s *sched) recoverOrphans(ctx context.Context, repos map[string]string) {
 	tasks, err := s.tr.List(ctx, []string{"in_progress"})
 	if err != nil {
@@ -223,10 +224,15 @@ func (s *sched) recoverOrphans(ctx context.Context, repos map[string]string) {
 		case errors.Is(err, errChanged):
 		case err != nil:
 			s.log.Error("could not reopen the orphan", "task", t.ID, "err", err)
+			s.pause(t.ID) // the note is written: do not repeat it every tick
 		default:
 			s.log.Warn("orphan reopened", "task", t.ID, "claim", t.Claim)
+			s.failed++
+			own := t.Claim != ""
 			t.Status, t.Claim = s.cfg.ReopenStatus, ""
-			if s.failure(t.ID, t, errors.New(reason)) {
+			if own {
+				s.pause(t.ID)
+			} else if s.failure(t.ID, t, errors.New(reason)) {
 				s.block(ctx, t.ID)
 			}
 		}

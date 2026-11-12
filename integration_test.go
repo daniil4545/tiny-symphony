@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -475,20 +476,53 @@ func TestOrphanInProgressIsReopened(t *testing.T) {
 
 	s.recoverOrphans(t.Context(), map[string]string{"toy": e.repo})
 	for _, id := range []string{ours, bare} {
-		if got := e.get(t, id); got.Status != "open" || got.Claim != "" || s.tries[id].N != 1 {
-			t.Fatalf("%s: task %+v, tries %+v", id, got, s.tries[id])
+		if got := e.get(t, id); got.Status != "open" || got.Claim != "" {
+			t.Fatalf("%s: task %+v", id, got)
 		}
+	}
+	if s.failed != 2 || s.tries[bare].N != 1 || s.tries[ours].N != 0 { // own claim: a pause, no attempt
+		t.Fatalf("failed %d, tries %+v %+v", s.failed, s.tries[ours], s.tries[bare])
 	}
 	if note := lastNote(t, e, ours); !strings.Contains(note, "left in_progress with no run. Back to open") {
 		t.Fatalf("note = %q", note)
 	}
-	for range 2 { // the limit still holds
+	for range 2 { // the limit still holds for an empty claim
 		time.Sleep(2 * time.Millisecond)
-		tixDo(t, e.tx, "", "move", ours, "in_progress")
+		tixDo(t, e.tx, "", "move", bare, "in_progress")
 		s.recoverOrphans(t.Context(), map[string]string{"toy": e.repo})
 	}
-	if got := e.get(t, ours); got.Status != "blocked" {
+	if got := e.get(t, bare); got.Status != "blocked" {
 		t.Fatalf("task %+v", got)
+	}
+}
+
+// failingReopen is a Tracker whose Reopen fails after the note was written.
+type failingReopen struct {
+	Tracker
+	notes int
+}
+
+func (f *failingReopen) Note(ctx context.Context, id, text string) error {
+	f.notes++
+	return f.Tracker.Note(ctx, id, text)
+}
+func (f *failingReopen) Reopen(context.Context, string) error { return errors.New("tix down") }
+
+// A failed Reopen after the note must not repeat the note on the next tick.
+func TestOrphanReopenFailureWritesOneNote(t *testing.T) {
+	e := newEnv(t, "noop")
+	id := e.create(t, "Stuck", "agent:stub")
+	tixDo(t, e.tx, "", "take", id, "--as", actorName("stub", id))
+	s := e.sched()
+	s.backoff = []time.Duration{time.Hour}
+	f := &failingReopen{Tracker: s.tr}
+	s.tr = f
+
+	for range 2 {
+		s.recoverOrphans(t.Context(), map[string]string{"toy": e.repo})
+	}
+	if f.notes != 1 || e.get(t, id).Status != "in_progress" {
+		t.Fatalf("notes %d, task %+v", f.notes, e.get(t, id))
 	}
 }
 
