@@ -12,7 +12,7 @@ import (
 // liveAgents are the commands the smoke test runs; an agent is verified only after a pass here.
 var liveAgents = map[string][]string{
 	"claude":   {"claude", "-p", "--permission-mode", "auto", "{prompt}"},
-	"codex":    {"codex", "exec", "--sandbox", "workspace-write", "{prompt}"},
+	"codex":    {"codex", "exec", "--sandbox", "danger-full-access", "{prompt}"},
 	"opencode": {"opencode", "run", "--auto", "{prompt}"},
 	"kimi":     {"kimi", "-p", "{prompt}"},
 	"pi":       {"pi", "-p", "{prompt}"},
