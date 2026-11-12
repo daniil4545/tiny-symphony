@@ -12,7 +12,7 @@ func (s *sched) cleanup(ctx context.Context) {
 	tasks, err := s.tr.List(ctx, []string{"closed"})
 	var repos map[string]string
 	if err == nil {
-		repos, err = s.tr.Repos(ctx)
+		repos, err = projectRepos(ctx, s.cfg, s.tr)
 	}
 	if err != nil {
 		s.log.Warn("cleanup: tracker read failed, skipped", "err", err)
