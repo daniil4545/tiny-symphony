@@ -46,7 +46,7 @@ runs with `--sandbox danger-full-access`: with `workspace-write` it cannot commi
 | Agent | Command | Live run on 0.2.0 |
 | --- | --- | --- |
 | claude | `claude -p --permission-mode auto {prompt}` | passed 2026-11-12 on a clone of ci-sandbox: took the task, opened a PR, handed over |
-| codex | `codex exec --sandbox danger-full-access {prompt}` | not checked yet |
+| codex | `codex exec --sandbox danger-full-access {prompt}` | failed 2026-11-12: committed, no PR; codex refused a command by its approval policy |
 | kimi | `kimi -p {prompt}` | not checked: the CLI login had expired |
 
 A live run is `make smoke AGENT=<name>` (paid, needs `PAID_OK=1 MAX_USD=1`); with
