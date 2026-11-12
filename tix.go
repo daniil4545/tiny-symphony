@@ -4,12 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"regexp"
 	"strings"
 	"time"
 )
+
+// errTracker marks a failure of the tracker itself (it did not start, hung, or refused the call).
+var errTracker = errors.New("tracker")
 
 // noteLimit is the longest note tix accepts, in characters.
 const noteLimit = 300

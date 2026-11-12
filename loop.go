@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -218,4 +219,9 @@ func (s *sched) finish(ctx context.Context, o outcome) {
 			s.block(ctx, o.id)
 		}
 	}
+}
+
+func idNumber(id string) int {
+	n, _ := strconv.Atoi(id[strings.LastIndex(id, "-")+1:])
+	return n
 }
