@@ -50,7 +50,8 @@ runs with `--sandbox danger-full-access`: with `workspace-write` it cannot commi
 | kimi | `kimi -p {prompt}` | not checked: the CLI login had expired |
 
 A live run is `make smoke AGENT=<name>` (paid, needs `PAID_OK=1 MAX_USD=1`); with
-`LIVE_REPO=<GitHub URL>` the task runs in a clone of that repository and its PR is closed after the run. opencode and pi were never verified. Any other CLI with
+`LIVE_REPO=<GitHub URL>` the task runs in a clone of that repository and its PR is closed after the run.
+opencode and pi were never verified. Any other CLI with
 a one-shot mode is a few lines in `[agents.<name>]`.
 
 ## Development
