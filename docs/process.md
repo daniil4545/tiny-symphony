@@ -66,7 +66,7 @@ Statuses are names from the config; with tix 0.8 they are the five built-in ones
 | 4 | daemon | agent CLI | starts the agent in the worktree; the prompt names the actor `tiny-symphony:<agent>:<T-N>` | open |
 | 5 | agent | tix | `tix take T-N --as <actor>` | in_progress |
 | 6 | agent | git, GitHub | works, runs the project checks, commits, pushes, opens the PR | in_progress |
-| 7 | agent | tix | `external` = PR link, a note, `tix move T-N <handoff_status>` (blocked "Ждёт: review PR" on 0.8, a review status on 0.9) | blocked or review |
+| 7 | agent | tix | `external` = PR link, a note, `tix move T-N <handoff_status> -m "Ждёт: review PR"` (blocked on 0.8, a review status on 0.9) | blocked or review |
 | 8 | daemon | tix | after exit reads the task: out of the watched statuses and out of in_progress, so success | blocked or review |
 | 9 | human | GitHub, tix | reads the PR from the link, then closes the task, or comments and moves it back to a watched status | closed or open |
 | 10 | GitHub or human | GitHub | CI runs; the PR is merged (see Merge) | closed |
@@ -86,7 +86,7 @@ the agent reads the comments in `tix show`.
 | 7 | agent handed over and then exited with an error | daemon: task out of the watched statuses | success; the tracker state decides |
 | 4-7 | the same task failed `max_attempts` times | daemon | note with the reason and log path, task to blocked, count reset; the human decides |
 | 5 | another session took the task first | tix refuses `take` | the agent exits; the task is in_progress with that claim: one note, failed attempt, no move |
-| 4-7 | the human removed the tag | daemon: next tick | run stopped, no attempt |
+| 4-7 | the human removed the tag, moved the taken task back to open, or someone stole the claim | daemon: next tick | run stopped, no attempt; the human's move stands |
 | 8 | the human moved the task between the run's end and the daemon's write | daemon: fresh read before writing | the daemon writes nothing |
 | 7 | the agent closed the task itself | nobody: closed looks the same whoever closed it | success; the review gate was skipped (open question Q3) |
 | 7 | no PR link in `external` | the watch skips the task | cleanup removes the worktree; the unmerged branch stays |
