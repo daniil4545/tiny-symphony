@@ -29,6 +29,7 @@ fmt:
 
 # All static checks: go vet, Go format, golangci-lint (v2.15.0), ruff and shellcheck on own files.
 # In an old project LINT_BASE=main lints only new Go code.
+# ruff format --check is off: all 3 scripts/*.py files fail it; old code is not reformatted.
 GOLANGCI := $(shell command -v golangci-lint 2>/dev/null || echo go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0)
 RUFF := uvx ruff@0.17.2
 SHELLCHECK := uvx --from shellcheck-py==0.11.0.1 shellcheck
