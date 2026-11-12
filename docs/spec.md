@@ -99,10 +99,11 @@ The daemon does not trust the agent's word; it checks facts it can see itself.
 | S2 | agent hung | `run_timeout` passed | kills the process group, failed attempt |
 | S3 | task moved by a human | status differs from the one the run started in | kills the process group, no attempt counted |
 | S4 | no or bad result | `result.json` missing, not valid, a transition not in the pipeline table, or Blocked without a comment | failed attempt |
-| S5 | spec not written | To Do result without a plan (unless `quick`) | failed attempt |
-| S6 | work not finished | result Review, but the worktree has uncommitted changes, the branch is not pushed, no PR or MR exists for it, or the project's `verify` command fails | failed attempt |
 | S7 | agent keeps failing | `max_attempts` failed attempts on one task | comments with the reason and log path, moves the task to Blocked |
 | S8 | daemon restarted | a pid file in a worktree with that process still alive | kills the leftover process group, then dispatches as usual |
+
+S5 (spec not written) and S6 (Review checks) went away in 0.2.0 with `result.json`: the agent hands
+the task over itself (`docs/specs/0.2.0.md`, Run).
 
 Failed attempts are retried with backoff (1, 5, 15 min); the reason of the last failure goes into
 the next prompt, so the agent knows what to fix. The count and the reason are saved in

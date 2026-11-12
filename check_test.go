@@ -10,41 +10,38 @@ import (
 	"testing"
 )
 
-// checkEnv builds a config that passes every check: stub agent and gh in a private PATH, a fake repo.
-func checkEnv(t *testing.T) (*Config, string, *Backlog) {
-	t.Helper()
-	bin, cfgDir, repo := t.TempDir(), t.TempDir(), t.TempDir()
-	for _, name := range []string{"stub", "gh", "git"} {
-		write(t, filepath.Join(bin, name), "#!/bin/sh\n", 0o700)
-	}
-	t.Setenv("PATH", bin)
-	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o750); err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range []string{"to-do", "in-progress", "rework"} {
-		write(t, filepath.Join(cfgDir, "prompts", f+".md"), "{{.id}} {{.title}}", 0o600)
-	}
-	cfg := &Config{
-		BacklogDir:    t.TempDir(),
-		WorkspaceRoot: filepath.Join(t.TempDir(), "not", "yet"),
-		Projects:      map[string]Project{"toy": {Repo: repo}},
-		Agents:        map[string]Agent{"stub": {Cmd: []string{"stub", "-p", "{prompt}"}}},
-	}
-	bl := &Backlog{run: func(context.Context, ...string) ([]byte, error) {
-		return []byte(`{"tasks":[]}`), nil
-	}}
-	return cfg, cfgDir, bl
+// listStub is a Tracker whose List gives err; check calls nothing else.
+type listStub struct {
+	Tracker
+	err error
 }
 
-func runCheck(cfg *Config, dir string, bl *Backlog) (int, string) {
+func (l listStub) List(context.Context, []string) ([]TrackerTask, error) { return nil, l.err }
+
+// checkEnv builds a config that passes every check: a stub agent in a private PATH.
+func checkEnv(t *testing.T) (*Config, *listStub) {
+	t.Helper()
+	bin := t.TempDir()
+	write(t, filepath.Join(bin, "stub"), "#!/bin/sh\n", 0o700)
+	t.Setenv("PATH", bin)
+	cfg := &Config{
+		Tracker:       "tix",
+		WorkspaceRoot: filepath.Join(t.TempDir(), "not", "yet"),
+		Watch:         []string{"open"},
+		Agents:        map[string]Agent{"stub": {Cmd: []string{"stub", "-p", "{prompt}"}}},
+	}
+	return cfg, &listStub{}
+}
+
+func runCheck(cfg *Config, tr Tracker) (int, string) {
 	var out bytes.Buffer
-	n := checkConfig(context.Background(), &out, cfg, dir, bl)
+	n := checkConfig(context.Background(), &out, cfg, tr)
 	return n, out.String()
 }
 
 func TestCheckAllOK(t *testing.T) {
-	cfg, dir, bl := checkEnv(t)
-	n, out := runCheck(cfg, dir, bl)
+	cfg, tr := checkEnv(t)
+	n, out := runCheck(cfg, tr)
 	if n != 0 || strings.Contains(out, "FAIL") {
 		t.Fatalf("want all ok, got %d:\n%s", n, out)
 	}
@@ -55,43 +52,25 @@ func TestCheckAllOK(t *testing.T) {
 
 func TestCheckFailures(t *testing.T) {
 	cases := map[string]struct {
-		break_ func(cfg *Config, dir string, bl *Backlog)
+		break_ func(cfg *Config, tr *listStub)
 		want   string
 	}{
-		"agent not in PATH": {func(c *Config, _ string, _ *Backlog) {
+		"agent not in PATH": {func(c *Config, _ *listStub) {
 			c.Agents["stub"] = Agent{Cmd: []string{"no-such-agent", "{prompt}"}}
 		}, "FAIL agent stub"},
-		"no {prompt}": {func(c *Config, _ string, _ *Backlog) {
+		"no {prompt}": {func(c *Config, _ *listStub) {
 			c.Agents["stub"] = Agent{Cmd: []string{"stub", "-p"}}
 		}, "cmd has no {prompt}"},
-		"repo is not git": {func(c *Config, _ string, _ *Backlog) {
-			c.Projects["toy"] = Project{Repo: t.TempDir()}
-		}, "is not a git repository"},
-		"no prompt": {func(_ *Config, d string, _ *Backlog) {
-			_ = os.Remove(filepath.Join(d, "prompts", "rework.md"))
-		}, "FAIL prompt"},
-		"no agents": {func(c *Config, _ string, _ *Backlog) {
+		"no agents": {func(c *Config, _ *listStub) {
 			c.Agents = map[string]Agent{}
 		}, "FAIL agents: none configured"},
-		"no projects": {func(c *Config, _ string, _ *Backlog) {
-			c.Projects = map[string]Project{}
-		}, "FAIL projects: none configured"},
-		"gitlab forge without glab": {func(c *Config, _ string, _ *Backlog) {
-			c.Projects["toy"] = Project{Repo: c.Projects["toy"].Repo, Forge: "gitlab"}
-		}, "glab not in PATH"},
-		"unknown forge needs gh": {func(c *Config, _ string, _ *Backlog) {
-			c.Projects["toy"] = Project{Repo: c.Projects["toy"].Repo, Forge: "gitea"}
-			_ = os.Remove(filepath.Join(os.Getenv("PATH"), "gh"))
-		}, "gh not in PATH"},
-		"tracker silent": {func(_ *Config, _ string, b *Backlog) {
-			b.run = func(context.Context, ...string) ([]byte, error) { return nil, errors.New("boom") }
-		}, "FAIL tracker"},
+		"tracker silent": {func(_ *Config, tr *listStub) { tr.err = errors.New("boom") }, "FAIL tracker tix"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			cfg, dir, bl := checkEnv(t)
-			tc.break_(cfg, dir, bl)
-			n, out := runCheck(cfg, dir, bl)
+			cfg, tr := checkEnv(t)
+			tc.break_(cfg, tr)
+			n, out := runCheck(cfg, tr)
 			if n != 1 || !strings.Contains(out, tc.want) {
 				t.Fatalf("want 1 failure with %q, got %d:\n%s", tc.want, n, out)
 			}
@@ -107,9 +86,9 @@ func TestCheckRootNotWritable(t *testing.T) {
 	if err := os.Chmod(dir, 0o500); err != nil {
 		t.Fatal(err)
 	}
-	cfg, cfgDir, bl := checkEnv(t)
+	cfg, tr := checkEnv(t)
 	cfg.WorkspaceRoot = filepath.Join(dir, "work")
-	n, out := runCheck(cfg, cfgDir, bl)
+	n, out := runCheck(cfg, tr)
 	if n != 1 || !strings.Contains(out, "is not writable") {
 		t.Fatalf("want 1 failure, got %d:\n%s", n, out)
 	}

@@ -1,12 +1,15 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -31,20 +34,21 @@ func lockWorkspace(root string) (*os.File, error) {
 }
 
 type active struct {
-	status string
-	stop   context.CancelCauseFunc
+	agent, actor string
+	taken        bool // the claim of actor was seen
+	stop         context.CancelCauseFunc
 }
 
 type outcome struct {
-	id  string
-	err error
+	id   string
+	snap TrackerTask // the task as the run ended: the guard of the daemon's writes
+	err  error
 }
 
 // sched owns the running runs: only the goroutine that calls tick and finish touches the map.
 type sched struct {
 	cfg                  *Config
-	configDir            string
-	bl                   *Backlog
+	tr                   Tracker
 	log                  *slog.Logger
 	poll, timeout, grace time.Duration
 	running              map[string]*active
@@ -56,9 +60,9 @@ type sched struct {
 	stopping             bool
 }
 
-func newSched(cfg *Config, configDir string, bl *Backlog, log *slog.Logger) *sched {
+func newSched(cfg *Config, tr Tracker, log *slog.Logger) *sched {
 	return &sched{
-		cfg: cfg, configDir: configDir, bl: bl, log: log,
+		cfg: cfg, tr: tr, log: log,
 		poll:    time.Duration(cfg.PollSeconds) * time.Second,
 		timeout: time.Duration(cfg.RunTimeoutMinutes) * time.Minute,
 		grace:   10 * time.Second, trackerPause: 2 * time.Second,
@@ -94,12 +98,70 @@ func (s *sched) loop(ctx context.Context, once bool) int {
 	return s.failed
 }
 
+func (s *sched) watching(status string) bool { return slices.Contains(s.cfg.Watch, norm(status)) }
+
+// agentFor is the configured agent named by the task's first usable agent:<name> tag.
+func (s *sched) agentFor(t TrackerTask) (string, Agent, bool) {
+	for _, tag := range t.Tags {
+		if n, ok := strings.CutPrefix(norm(tag), "agent:"); ok {
+			if a, known := s.cfg.Agents[n]; known {
+				return n, a, true
+			}
+		}
+	}
+	return "", Agent{}, false
+}
+
+// live reports whether the task has a claim that has not expired.
+func live(t TrackerTask) bool {
+	if t.Claim == "" {
+		return false
+	}
+	until, err := time.ParseInLocation("2006-01-02T15:04", t.ClaimUntil, time.Local)
+	return err != nil || until.After(time.Now())
+}
+
+// ready is true when every task in the After: lines of t is closed.
+func (s *sched) ready(ctx context.Context, t TrackerTask) bool {
+	full, err := s.tr.Get(ctx, t.ID)
+	for i := 0; err == nil && i < len(full.After); i++ {
+		var dep TrackerTask
+		if dep, err = s.tr.Get(ctx, full.After[i]); err == nil && norm(dep.Status) != "closed" {
+			return false
+		}
+	}
+	if err != nil {
+		s.log.Warn("dependencies not read", "task", t.ID, "err", err)
+	}
+	return err == nil
+}
+
+// reconcile stops a run whose task lost its agent tag, or which our actor had taken and which is now
+// back in a watched status or held by someone else. Other moves are the agent's own handover.
+func (s *sched) reconcile(ctx context.Context) {
+	for id, r := range s.running {
+		t, err := s.tr.Get(ctx, id)
+		if err != nil {
+			continue
+		}
+		r.taken = r.taken || t.Claim == r.actor
+		if !slices.ContainsFunc(t.Tags, func(g string) bool { return norm(g) == "agent:"+r.agent }) || r.taken && (s.watching(t.Status) || live(t) && t.Claim != r.actor) {
+			s.log.Info("stopping run, task changed hands", "task", id, "status", t.Status, "claim", t.Claim)
+			r.stop(errMoved)
+		}
+	}
+}
+
 // tick is reconcile, collect, dispatch. A tracker read error skips it and leaves the runs alone.
 func (s *sched) tick(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
 	}
-	tasks, err := s.bl.List(ctx)
+	tasks, err := s.tr.List(ctx, s.cfg.Watch)
+	var repos map[string]string
+	if err == nil {
+		repos, err = s.tr.Repos(ctx)
+	}
 	if ctx.Err() != nil {
 		return
 	}
@@ -108,52 +170,42 @@ func (s *sched) tick(ctx context.Context) {
 		s.failed++
 		return
 	}
-	s.housekeeping(ctx)
-	listed := map[string]Task{}
-	for _, t := range tasks {
-		listed[t.ID] = t
-	}
-	for id, r := range s.running {
-		if t, ok := listed[id]; !ok || norm(t.Status) != norm(r.status) {
-			s.log.Info("stopping run, task moved", "task", id)
-			r.stop(errMoved)
-		}
-	}
+	s.housekeeping()
+	s.reconcile(ctx)
+	slices.SortFunc(tasks, func(a, b TrackerTask) int {
+		return cmp.Or(cmp.Compare(a.Rank, b.Rank), a.Created.Compare(b.Created), cmp.Compare(idNumber(a.ID), idNumber(b.ID)))
+	})
 	for _, t := range tasks {
 		if len(s.running) >= s.cfg.MaxAgents {
 			return
 		}
-		if _, busy := s.running[t.ID]; busy {
-			continue
-		}
-		l := s.log.With("task", t.ID, "status", t.Status)
-		agent, ok := s.cfg.Agents[t.agentName()]
-		proj, known := s.cfg.Projects[norm(t.Project)]
-		if !ok || !known {
-			l.Info("skipped", "agent", t.agentName(), "project", t.Project, "reason", "agent or project not in config")
+		name, agent, ok := s.agentFor(t)
+		repo := repos[t.Project]
+		if _, busy := s.running[t.ID]; busy || !ok || repo == "" || live(t) || slices.Contains(t.Tags, "epic") {
 			continue
 		}
 		attempt, lastErr, wait := s.attempt(ctx, t)
-		if wait {
+		if wait || !s.ready(ctx, t) {
 			continue
 		}
 		stop, cancel := context.WithCancelCause(ctx)
-		s.running[t.ID] = &active{status: t.Status, stop: cancel}
+		s.running[t.ID] = &active{agent: name, actor: actorName(name, t.ID), stop: cancel}
 		go func() {
-			s.done <- outcome{t.ID, s.runTask(ctx, stop, t, agent, proj, attempt, lastErr, l)}
+			snap, err := s.runTask(ctx, stop, t, name, agent, repo, attempt, lastErr, s.log.With("task", t.ID))
+			s.done <- outcome{t.ID, snap, err}
 		}()
 	}
 }
 
 func (s *sched) finish(ctx context.Context, o outcome) {
-	status := s.running[o.id].status
 	s.running[o.id].stop(nil)
 	delete(s.running, o.id)
 	switch {
 	case o.err == nil:
 		s.clearTries(o.id)
 	case errors.Is(o.err, errMoved):
-		s.log.Info("run stopped", "task", o.id, "outcome", "moved", "reason", "status changed, no attempt counted")
+		s.pause(o.id)
+		s.log.Info("run stopped", "task", o.id, "outcome", "moved", "reason", "task changed hands, no attempt counted")
 	case s.stopping:
 		s.log.Info("run stopped", "task", o.id, "outcome", "shutdown")
 	case errors.Is(o.err, errTracker):
@@ -162,7 +214,7 @@ func (s *sched) finish(ctx context.Context, o outcome) {
 	default:
 		s.log.Error("run failed", "task", o.id, "outcome", "failed", "err", o.err)
 		s.failed++
-		if s.failure(o.id, status, o.err) {
+		if s.failure(o.id, o.snap, o.err) {
 			s.block(ctx, o.id)
 		}
 	}
