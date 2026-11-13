@@ -19,7 +19,7 @@ func write(t *testing.T, path, text string, mode os.FileMode) {
 }
 
 // The prompt reaches the agent as one argv element, untouched by any shell.
-// spec: R5, R1
+// spec: R3, R1
 func TestPromptPassesWithoutShell(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "T-1-x")

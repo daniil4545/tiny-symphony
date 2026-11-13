@@ -41,7 +41,7 @@ func (s *sched) cleanup(ctx context.Context) {
 			continue
 		}
 		s.log.Info("cleanup: worktree removed", "task", t.ID)
-		// branch -d accepts a branch merged only into its upstream, so ask HEAD first (R7).
+		// branch -d accepts a branch merged only into its upstream, so ask HEAD first (R5).
 		branch := filepath.Base(dir)
 		if _, err = git(ctx, repo, "merge-base", "--is-ancestor", branch, "HEAD"); err == nil {
 			_, err = git(ctx, repo, "branch", "-d", branch)

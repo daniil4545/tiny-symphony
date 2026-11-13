@@ -117,7 +117,7 @@ func TestTrackerErrorLeavesRunsAlone(t *testing.T) {
 	}
 }
 
-// spec: R6
+// spec: R4
 func TestSecondInstanceDoesNotStart(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "work")
 	first, err := lockWorkspace(root)

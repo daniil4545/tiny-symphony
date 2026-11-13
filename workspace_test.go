@@ -137,7 +137,7 @@ func TestSubtaskDirIsNotTakenByParent(t *testing.T) {
 	if got, _ := findWorkspace(root, "T-1.1"); got != sub {
 		t.Fatalf("subtask lost its directory: %q", got)
 	}
-	// Directories made before the id file existed are ambiguous: an error, no run.
+	// Directories without an id file are ambiguous: an error, no run.
 	for _, d := range []string{sub, parent} {
 		if err = os.Remove(filepath.Join(d, stateDir, "task-id")); err != nil {
 			t.Fatal(err)

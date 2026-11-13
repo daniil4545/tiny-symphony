@@ -68,7 +68,7 @@ const (
 	prClosed  = `{"state":"CLOSED","mergedAt":null,"mergeStateStatus":"UNKNOWN","statusCheckRollup":[]}`
 )
 
-// spec: R7, R5, R8
+// spec: R5, R3, R6
 // Acceptance 8: a red check gives a note and Reopen until max_reopens, then one note; pending gives nothing.
 func TestWatchRedReopensThenOneLimitNote(t *testing.T) {
 	setPR, calls := fakeGH(t)
@@ -110,7 +110,7 @@ func TestWatchDirtyReopens(t *testing.T) {
 	}
 }
 
-// spec: R7
+// spec: R5
 // Acceptance 8: merged gives a note and the worktree removed; closed gives one note; a restart repeats nothing.
 func TestWatchMergedAndClosedOnceAcrossRestart(t *testing.T) {
 	setPR, _ := fakeGH(t)
