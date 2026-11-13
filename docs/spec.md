@@ -319,7 +319,7 @@ Tests use the real `tix` binary on a temporary store (`TIX_HOME`), a fake agent 
     higher `max_attempts` fails the dispatch.
 11. One live run per supported agent (claude, codex, kimi) on a throwaway repo: the claim in the
     store carries `tiny-symphony:<agent>:<T-N>`; the owner reads the log. Before the release.
-12. `make ci-check` green; R1-R6 each have a test.
+12. `make ci-check` green; R1-R7 each have a test.
 
 ## Left out
 
