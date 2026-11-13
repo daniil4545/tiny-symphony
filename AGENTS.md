@@ -15,7 +15,7 @@ project `tiny-symphony`.
 - Stdlib first. A new dependency needs a line in `docs/spec.md` Decisions.
 - The tracker is the state; in memory only runs and attempt counts. No database.
 - The agent writes the tracker; the daemon only `Note`, `Block` and `Reopen`, each after a
-  guarding read (R8).
+  guarding read (R6).
 - Test against the real agent CLIs before calling an agent supported (`make smoke`, paid, after approval).
 
 ## Stack
@@ -55,7 +55,7 @@ macOS and Linux; needs `git`, `tix` 0.8.1 and `gh`. CI: GitHub Actions.
 
 ## Critical invariants
 
-Boundaries R1, R2, R5-R9 of `docs/spec.md`. In short:
+Boundaries R1-R7 of `docs/spec.md`. In short:
 
 - The daemon never touches a task without an `agent:<name>` label.
 - It starts agents only inside `workspace_root`, never through a shell.

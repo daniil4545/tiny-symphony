@@ -118,7 +118,7 @@ GitHub facts that shape this:
 | C. Human | the human in GitHub | the merge button | nothing |
 
 The owner chose C (`docs/spec.md`, D7): the watch only reports: it never switches auto-merge on and never merges
-(boundary R7). B is the closest to Symphony's "Merging" status. Linear works the other way round:
+(boundary R5). B is the closest to Symphony's "Merging" status. Linear works the other way round:
 the tracker follows PR events (opened, so In Progress; merged, so Done).
 
 ## Modules and switches

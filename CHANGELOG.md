@@ -18,7 +18,8 @@ First release.
 - A task left taken by a crashed run or a killed daemon returns to `open`; a run stops when a human
   removes the tag or takes the task back. A lock file keeps a second daemon out.
 - Every daemon write (a note, a move to blocked or back) follows a fresh read and is skipped if a
-  human changed the task meanwhile. Its writes go under the actor `tiny-symphony:<agent>:<T-N>`.
+  human changed the task meanwhile. The agent runs under the actor `tiny-symphony:<agent>:<T-N>`, the
+  daemon writes as `tiny-symphony`.
 - Config: `watch`, `handoff_status`, `blocked_status`, `reopen_status`, `[repos]`. An optional
   `.tiny-symphony.toml` per project adds to the prompt and may lower `max_attempts` and
   `run_timeout_minutes`; it cannot name agent commands.

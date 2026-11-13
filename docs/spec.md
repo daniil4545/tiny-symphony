@@ -23,7 +23,7 @@ gates, the agent works with the tracker itself, the daemon says when something w
 1. **One job.** Find tagged tasks in the watched statuses, run an agent on each in its own worktree,
    report failures. Not a tracker, not a pipeline, not a merge bot.
 2. **Each system owns its state.** Task and status: tracker. Branch: git. PR, CI, merge: GitHub.
-   The daemon keeps nothing durable except the attempts file in the worktree. No database.
+   The daemon keeps nothing durable except the attempts and watch files in the worktree. No database.
 3. **The agent works like a person.** Same CLI, same rules files, same tracker commands as an
    interactive session. The daemon adds the worktree, the actor name and a short prompt. An agent
    is an argv template in the config; a new one is a few lines, no code.
@@ -143,7 +143,7 @@ status, claim and `external`. Anything else means someone moved it, and the daem
 known residual race.
 
 On start the daemon takes the lock of `workspace_root` and kills leftover agents found by their pid
-files (S8).
+files (S6).
 
 ### Supervision
 
@@ -155,8 +155,8 @@ The daemon does not trust the agent's word; it checks the tracker.
 | S2 | agent hung | `run_timeout_minutes` passed | kills the process group, failed attempt |
 | S3 | task taken over | tag removed, or the taken task is back in a watched status or held by another actor | kills the process group, no attempt counted |
 | S4 | no handover, or a bad project config | exit 0 with the task not moved; a project file that does not parse or sets a forbidden key | failed attempt |
-| S7 | agent keeps failing | `max_attempts` failed attempts on one task | note with the reason and log path, `Block`, count reset |
-| S8 | daemon restarted | a pid file in a worktree with that process still alive | kills the leftover process group, then dispatches as usual |
+| S5 | agent keeps failing | `max_attempts` failed attempts on one task | note with the reason and log path, `Block`, count reset |
+| S6 | daemon restarted | a pid file in a worktree with that process still alive | kills the leftover process group, then dispatches as usual |
 
 **Known deviation.** Reconcile sees our claim only on a tick. An agent that takes a task and
 gives it back between two ticks is not stopped; in the worst case it runs on until the timeout.
@@ -187,7 +187,7 @@ Two layers.
    spending limit). Any other key, or a file that does not parse, is a failed attempt with the
    reason in the note at `Block`, so backoff and `max_attempts` bound it like any other failure.
    Agent commands never come from a repository: an agent could change them in a PR and the daemon
-   runs outside any sandbox (R9).
+   runs outside any sandbox (R7).
 
 ```toml
 tracker = "tix"
@@ -264,11 +264,11 @@ What the daemon never does, whatever the input. Each line gets a test.
 
 - R1: Starts an agent outside `workspace_root`, or with a cwd other than the task's worktree.
 - R2: Touches a task without an `agent:<name>` tag.
-- R5: Puts a shell between itself and the agent.
-- R6: Runs a second instance against the same `workspace_root`.
-- R7: Merges, pushes, or deletes an unmerged branch.
-- R8: Writes the tracker other than `Note`, `Block` and `Reopen`, or without a guarding `Get`.
-- R9: Takes an agent command from anywhere but the central config.
+- R3: Puts a shell between itself and the agent.
+- R4: Runs a second instance against the same `workspace_root`.
+- R5: Merges, pushes, or deletes an unmerged branch.
+- R6: Writes the tracker other than `Note`, `Block` and `Reopen`, or without a guarding `Get`.
+- R7: Takes an agent command from anywhere but the central config.
 
 ## Decisions
 
@@ -280,10 +280,10 @@ What the daemon never does, whatever the input. Each line gets a test.
   owner, 12.11: an agent working with the tracker itself is close to the main feature of tix. Cost: the
   agent needs write access to the tracker store, git and the network, so codex runs with
   `danger-full-access` and the worktree is a convention, not a sandbox (unchecked: live run); the
-  daemon no longer checks the result, only where the task ended up.
+  daemon checks only where the task ended up.
 - D4 The tracker is an interface; tix is the first and only adapter in 0.1.0.
 - D5 Success is read from the tracker after the run, not from the exit code.
-- D6 The project config cannot name commands (R9).
+- D6 The project config cannot name commands (R7).
 - D7 A human merges; the watch only reports. Auto-merge by the agent or the daemon was rejected
   for now (`docs/process.md`, Merge). Owner, 12.11.
 - D8 `handoff_status` is `blocked` until tix 0.9 brings a review status; the same release may
@@ -319,7 +319,7 @@ Tests use the real `tix` binary on a temporary store (`TIX_HOME`), a fake agent 
     higher `max_attempts` fails the dispatch.
 11. One live run per supported agent (claude, codex, kimi) on a throwaway repo: the claim in the
     store carries `tiny-symphony:<agent>:<T-N>`; the owner reads the log. Before the release.
-12. `make ci-check` green; R1, R2, R5-R8 each have a test.
+12. `make ci-check` green; R1-R6 each have a test.
 
 ## Left out
 

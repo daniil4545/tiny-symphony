@@ -49,14 +49,10 @@ runs with `--sandbox danger-full-access`: with `workspace-write` it cannot commi
 | codex | `codex exec --sandbox danger-full-access {prompt}` | not verified: the run works, the PR step needs codex's own approval settings |
 | kimi | `kimi -p {prompt}` | not checked: the CLI login had expired |
 
-A live run is `make smoke AGENT=<name>` (paid, needs `PAID_OK=1 MAX_USD=1`); with
+A live run is `make smoke AGENT=<name>` (paid, needs `PAID_OK=1 MAX_USD=1` as consent; nothing caps the spend); with
 `LIVE_REPO=<GitHub URL>` the task runs in a clone of that repository and the PR the agent puts into `external` is closed after the run.
 opencode and pi were never verified. Any other CLI with
 a one-shot mode is a few lines in `[agents.<name>]`.
-
-## Development
-
-Checks: `make lint`
 
 ## Docs
 
