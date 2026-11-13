@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// spec: R7
+// spec: R5
 // Cleanup waits for the watch while the PR is open, and does not wait for a task without a PR link.
 func TestCleanupWaitsForWatchUnlessNoPR(t *testing.T) {
 	fakeGH(t)
@@ -29,7 +29,7 @@ func TestCleanupKeepsDirtyTree(t *testing.T) {
 	}
 }
 
-// spec: R7
+// spec: R5
 // A branch with unmerged work stays even when its upstream has it, as after `git push -u` of a PR closed unmerged.
 func TestCleanupKeepsUnmergedBranchWithUpstream(t *testing.T) {
 	e, s := watchEnv(t)

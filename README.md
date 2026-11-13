@@ -7,7 +7,7 @@ went wrong. Cut down from [OpenAI Symphony](https://github.com/openai/symphony) 
 
 ## Stage
 
-v0.2.0, a prototype for one user on one machine. Works and covered by tests: the polling loop with
+v0.1.0, a prototype for one user on one machine. Works and covered by tests: the polling loop with
 bounded concurrency, worktree per task, success read from the tracker after the run, retries with
 backoff, a task blocked after `max_attempts`, return of a task left taken, stop when a human
 removes the tag or takes the task back, a lock against a second daemon, a project config
@@ -43,20 +43,16 @@ Tests and linter: `make test` (needs `git` and `tix` on PATH) and `make lint`.
 The agent writes the tracker, so it needs write access to the tix store, git and the network. Codex
 runs with `--sandbox danger-full-access`: with `workspace-write` it cannot commit or push.
 
-| Agent | Command | Live run on 0.2.0 |
+| Agent | Command | Live run |
 | --- | --- | --- |
 | claude | `claude -p --permission-mode auto {prompt}` | passed 2026-11-12 on a clone of ci-sandbox: took the task, opened a PR, handed over |
 | codex | `codex exec --sandbox danger-full-access {prompt}` | not verified: the run works, the PR step needs codex's own approval settings |
 | kimi | `kimi -p {prompt}` | not checked: the CLI login had expired |
 
-A live run is `make smoke AGENT=<name>` (paid, needs `PAID_OK=1 MAX_USD=1`); with
+A live run is `make smoke AGENT=<name>` (paid, needs `PAID_OK=1 MAX_USD=1` as consent; nothing caps the spend); with
 `LIVE_REPO=<GitHub URL>` the task runs in a clone of that repository and the PR the agent puts into `external` is closed after the run.
 opencode and pi were never verified. Any other CLI with
 a one-shot mode is a few lines in `[agents.<name>]`.
-
-## Development
-
-Checks: `make lint`
 
 ## Docs
 

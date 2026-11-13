@@ -31,16 +31,16 @@ flowchart LR
 
 | File | Role |
 | --- | --- |
-| `main.go` | entry: `run` and `check`, flags, the lock, `runTask` (one run) and `judge` (the outcome from the tracker) |
+| `main.go` | entry: `run` and `check`, flags, `runTask` (one run) and `judge` (the outcome from the tracker) |
 | `loop.go` | scheduler `sched`: tick (reconcile, collect, dispatch), orphans, workers, workspace lock |
 | `tix.go` | the tracker interface, the tix adapter, `TrackerTask` |
-| `supervise.go` | attempts file, guarded `Note`/`Block`/`Reopen`, leftover agents |
+| `supervise.go` | attempts file, guarded `Note`/`Block`/`Reopen`, leftover agents, old run logs |
 | `agent.go` | starting the agent in its own process group, argv |
 | `prompt.go` | the built-in prompt template |
 | `workspace.go` | branch name, git worktree per task found by id, `.tiny-symphony/` kept out of git |
 | `config.go` | TOML config, defaults, project layer, `~` expansion |
 | `watch.go` | PR watch: `gh pr view`, notes, `Reopen`, marks file |
-| `cleanup.go` | worktrees of closed tasks, old logs |
+| `cleanup.go` | worktrees and branches of closed tasks |
 | `check.go` | `check` command: static checks of config and environment |
 
 ### Invariants
@@ -48,11 +48,11 @@ flowchart LR
 | Invariant | Where | Checked by |
 | --- | --- | --- |
 | No task without an `agent:<name>` tag is touched (R2) | `agentFor` in `loop.go` | `integration_test.go` |
-| An agent starts only inside `workspace_root`, no shell (R1, R5) | `runAgent`, `argv` | `agent_test.go` |
-| One daemon per `workspace_root` (R6) | `lockWorkspace` | `loop_test.go` |
-| No merge, no push, no deletion of unmerged branches (R7) | `cleanup`, `watchPRs` | `cleanup_test.go`, `watch_test.go` |
-| Tracker writes are `Note`, `Block`, `Reopen`, each after a guarding `Get` (R8) | `guarded` in `supervise.go` | `integration_test.go`, `watch_test.go` |
-| Agent commands come only from the central config (R9) | `withProjectLayer` | `layers_test.go` |
+| An agent starts only inside `workspace_root`, no shell (R1, R3) | `runAgent`, `argv` | `agent_test.go` |
+| One daemon per `workspace_root` (R4) | `lockWorkspace` | `loop_test.go` |
+| No merge, no push, no deletion of unmerged branches (R5) | `cleanup`, `watchPRs` | `cleanup_test.go`, `watch_test.go` |
+| Tracker writes are `Note`, `Block`, `Reopen`, each after a guarding `Get` (R6) | `guarded` in `supervise.go` | `integration_test.go`, `watch_test.go` |
+| Agent commands come only from the central config (R7) | `withProjectLayer` | `layers_test.go` |
 | `check` writes and creates nothing | `check.go` runs before the lock | `check_test.go` |
 
 ## 2. Main flow

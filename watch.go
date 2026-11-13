@@ -72,7 +72,7 @@ type prInfo struct {
 	} `json:"statusCheckRollup"`
 }
 
-// viewPR asks gh about the PR with the repository as cwd. No shell (R5).
+// viewPR asks gh about the PR with the repository as cwd. No shell (R3).
 func viewPR(ctx context.Context, repo, url string) (prInfo, error) {
 	ctx, cancel := context.WithTimeout(ctx, ghTimeout)
 	defer cancel()
@@ -107,7 +107,7 @@ func (p prInfo) failure() string {
 func hasPR(t TrackerTask) bool { return strings.HasPrefix(t.External, "http") }
 
 // watchPRs looks, once per poll_minutes, at the PR of every closed task that has a worktree and no run.
-// It never merges and never switches auto-merge on (R7).
+// It never merges and never switches auto-merge on (R5).
 func (s *sched) watchPRs(ctx context.Context) {
 	if v, ok := watchLast.Load(s); ok {
 		if last, _ := v.(time.Time); time.Since(last) < time.Duration(s.cfg.WatchPR.PollMinutes)*time.Minute {

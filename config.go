@@ -33,7 +33,7 @@ type Config struct {
 	Cleanup           Cleanup           `toml:"cleanup"`
 }
 
-// WatchPR and Cleanup only carry their settings here; the modules are T-723.
+// WatchPR and Cleanup carry the settings of the watch.go and cleanup.go modules.
 type WatchPR struct {
 	Enabled     bool `toml:"enabled"`
 	PollMinutes int  `toml:"poll_minutes"`

@@ -152,7 +152,7 @@ func drive(t *testing.T, s *sched, ticks int) {
 	}
 }
 
-// spec: R2, R7
+// spec: R2, R5
 // Acceptance 1: the agent takes, hands over; the run is a success and the daemon writes nothing.
 func TestHappyPathDaemonWritesNothing(t *testing.T) {
 	e := newEnv(t, "handoff")
@@ -192,7 +192,7 @@ func TestHappyPathDaemonWritesNothing(t *testing.T) {
 	}
 }
 
-// spec: S7, S4
+// spec: S5, S4
 // Acceptance 2: exit 0 without moving the task is a failed attempt; max_attempts give a note and Block, the count resets.
 func TestNoHandoverRetriesThenBlocks(t *testing.T) {
 	e := newEnv(t, "noop")
@@ -526,7 +526,7 @@ func TestOrphanReopenFailureWritesOneNote(t *testing.T) {
 	}
 }
 
-// spec: R2, R8
+// spec: R2, R6
 // A foreign live claim and a task without agent: are left alone.
 func TestOrphanLeavesForeignAndUntagged(t *testing.T) {
 	e := newEnv(t, "noop")

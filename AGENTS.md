@@ -3,7 +3,7 @@
 ## Project
 
 A small daemon that runs a coding agent CLI per tracker task in a git worktree. Single user, own
-machine. The code is 0.2.0, a connector to tix: the agent writes the tracker itself, the daemon
+machine. It is a connector to tix: the agent writes the tracker itself, the daemon
 only finds tagged tasks, runs agents and says when something went wrong. `docs/spec.md` is the
 canon; the process across tracker, git and GitHub is `docs/process.md`. Read the Philosophy of the
 spec before adding anything. Structure: `docs/architecture.md`. Tasks are in tix (`tix ctx`),
@@ -15,7 +15,7 @@ project `tiny-symphony`.
 - Stdlib first. A new dependency needs a line in `docs/spec.md` Decisions.
 - The tracker is the state; in memory only runs and attempt counts. No database.
 - The agent writes the tracker; the daemon only `Note`, `Block` and `Reopen`, each after a
-  guarding read (R8).
+  guarding read (R6).
 - Test against the real agent CLIs before calling an agent supported (`make smoke`, paid, after approval).
 
 ## Stack
@@ -55,7 +55,7 @@ macOS and Linux; needs `git`, `tix` 0.8.1 and `gh`. CI: GitHub Actions.
 
 ## Critical invariants
 
-Boundaries R1, R2, R5-R9 of `docs/spec.md`. In short:
+Boundaries R1-R7 of `docs/spec.md`. In short:
 
 - The daemon never touches a task without an `agent:<name>` label.
 - It starts agents only inside `workspace_root`, never through a shell.

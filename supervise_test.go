@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-// spec: S8
+// spec: S6
 func TestLeftoverGroupIsKilledOnStart(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, "T-1-x", stateDir, "keep"), "", 0o600)
@@ -78,7 +78,7 @@ func attemptsFile(t *testing.T, e *env, id string) string {
 	return filepath.Join(dir, stateDir, "attempts")
 }
 
-// spec: S7
+// spec: S5
 // Every pass is a new process, like `run --once` from cron: the count survives in the worktree.
 func TestAttemptsSurviveRestart(t *testing.T) {
 	e := newEnv(t, "noop")

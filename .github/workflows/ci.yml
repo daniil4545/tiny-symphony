@@ -28,7 +28,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      # The tix adapter tests run the real tix CLI (0.2.0); a release binary, checked against its sum.
+      # The tix adapter tests run the real tix CLI; a release binary, checked against its sum.
       - name: install tix
         run: |
           curl -fsSL -o "$RUNNER_TEMP/tix.tgz" https://github.com/daniil4545/tix/releases/download/v0.8.1/tix_0.8.1_linux_amd64.tar.gz

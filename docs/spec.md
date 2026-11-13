@@ -1,8 +1,7 @@
 # tiny-symphony: spec
 
-Status: 0.2.0, accepted 2026-11-12. Inspired by [OpenAI Symphony](https://github.com/openai/symphony)
-([SPEC.md](https://github.com/openai/symphony/blob/main/SPEC.md), read at `be10a1b`). 0.1.0 is the
-supervisor with its own pipeline (see `git show v0.1.0:docs/spec.md`); 0.2.0 is a connector for tix.
+Status: 0.1.0, accepted 2026-11-13. Inspired by [OpenAI Symphony](https://github.com/openai/symphony)
+([SPEC.md](https://github.com/openai/symphony/blob/main/SPEC.md), read at `be10a1b`).
 One task across the tracker, the daemon, git and GitHub: `docs/process.md`. Research:
 `docs/research/T-704-github-pr-flow.md`, `docs/research/T-660-prior-art.md`.
 
@@ -24,7 +23,7 @@ gates, the agent works with the tracker itself, the daemon says when something w
 1. **One job.** Find tagged tasks in the watched statuses, run an agent on each in its own worktree,
    report failures. Not a tracker, not a pipeline, not a merge bot.
 2. **Each system owns its state.** Task and status: tracker. Branch: git. PR, CI, merge: GitHub.
-   The daemon keeps nothing durable except the attempts file in the worktree. No database.
+   The daemon keeps nothing durable except the attempts and watch files in the worktree. No database.
 3. **The agent works like a person.** Same CLI, same rules files, same tracker commands as an
    interactive session. The daemon adds the worktree, the actor name and a short prompt. An agent
    is an argv template in the config; a new one is a few lines, no code.
@@ -35,7 +34,7 @@ gates, the agent works with the tracker itself, the daemon says when something w
 
 ## Tracker interface
 
-One Go interface, one adapter per tracker. 0.2.0 ships tix only. The adapter runs `tix` with the
+One Go interface, one adapter per tracker. 0.1.0 ships tix only. The adapter runs `tix` with the
 working directory `workspace_root`, which is outside any git repository and any project path, so
 `tix list` is not narrowed to the project of the current folder; the store comes from `TIX_HOME`
 or the tix default. Every call has a timeout.
@@ -54,24 +53,24 @@ before it. Moving out of in_progress drops the claim, so no separate release is 
 
 Task fields the daemon reads: `id`, `title`, `project`, `status`, `tags`, `claim`, `external`,
 `rank`, `created`, and the `After: T-N` lines of the body. Statuses are compared trimmed and
-lowercased. With tix 0.9 statuses are names with a kind (T-702); the daemon takes names from its
+lowercased. With tix 0.9 statuses are names with a kind; the daemon takes names from its
 config and needs no kind.
 
 ### Adapter contract
 
 What any tracker must give the daemon. Each line is a capability, not a command, so tix 0.9
-changes only the adapter and the config. Checked on 2026-11-12 against Backlog.md, Linear, GitHub
+changes only the adapter and the config. Checked on 2026-11-12 against Linear, GitHub
 Issues and Jira (`docs/research/T-704-github-pr-flow.md`, Tracker adapters).
 
 | Capability | tix 0.8 | Others |
 | --- | --- | --- |
-| list tasks by status and tag | `list --status --json` | all four filter by status and label |
-| one task with body and dependencies | `show --json`, `After:` | Backlog.md `--dep`, GitHub `blocked_by`; Linear, Jira relations |
-| holder: who works on the task now | `claim` (expires after 3 h) | an assignee (Backlog.md, GitHub, Jira) or a delegate (Linear); none expires |
+| list tasks by status and tag | `list --status --json` | all three filter by status and label |
+| one task with body and dependencies | `show --json`, `After:` | GitHub `blocked_by`; Linear, Jira relations |
+| holder: who works on the task now | `claim` (expires after 3 h) | an assignee (GitHub, Jira) or a delegate (Linear); none expires |
 | a note by a named actor | `note --as`, up to 300 characters | a comment by a bot or app user |
 | a status move with a reason | `move -m` | a move plus a note; GitHub Issues has only open and closed, so a status there is a label or a Projects field |
-| a link field | `external` | Backlog.md `--ref`, Linear attachments, Jira remote links, GitHub linked PRs |
-| project to repository | `projects` | Backlog.md and GitHub Issues: the repository that holds them; Linear, Jira: none, the central config maps it (`[repos]`) |
+| a link field | `external` | Linear attachments, Jira remote links, GitHub linked PRs |
+| project to repository | `projects` | GitHub Issues: the repository that holds them; Linear, Jira: none, the central config maps it (`[repos]`) |
 
 So the daemon knows statuses only as names from its config (the adapter maps a name to a status, a
 label or a field), the holder only as "an actor or nobody" (an expiry is the adapter's), parents
@@ -144,7 +143,7 @@ status, claim and `external`. Anything else means someone moved it, and the daem
 known residual race.
 
 On start the daemon takes the lock of `workspace_root` and kills leftover agents found by their pid
-files (S8).
+files (S6).
 
 ### Supervision
 
@@ -156,10 +155,8 @@ The daemon does not trust the agent's word; it checks the tracker.
 | S2 | agent hung | `run_timeout_minutes` passed | kills the process group, failed attempt |
 | S3 | task taken over | tag removed, or the taken task is back in a watched status or held by another actor | kills the process group, no attempt counted |
 | S4 | no handover, or a bad project config | exit 0 with the task not moved; a project file that does not parse or sets a forbidden key | failed attempt |
-| S7 | agent keeps failing | `max_attempts` failed attempts on one task | note with the reason and log path, `Block`, count reset |
-| S8 | daemon restarted | a pid file in a worktree with that process still alive | kills the leftover process group, then dispatches as usual |
-
-(S5 and S6 of 0.1.0 went away with the result file.)
+| S5 | agent keeps failing | `max_attempts` failed attempts on one task | note with the reason and log path, `Block`, count reset |
+| S6 | daemon restarted | a pid file in a worktree with that process still alive | kills the leftover process group, then dispatches as usual |
 
 **Known deviation.** Reconcile sees our claim only on a tick. An agent that takes a task and
 gives it back between two ticks is not stopped; in the worst case it runs on until the timeout.
@@ -190,7 +187,7 @@ Two layers.
    spending limit). Any other key, or a file that does not parse, is a failed attempt with the
    reason in the note at `Block`, so backoff and `max_attempts` bound it like any other failure.
    Agent commands never come from a repository: an agent could change them in a PR and the daemon
-   runs outside any sandbox (R9).
+   runs outside any sandbox (R7).
 
 ```toml
 tracker = "tix"
@@ -231,8 +228,7 @@ written. `{prompt}` is replaced by the rendered prompt as one argv element; no s
 At least one agent is needed to do any work. A task whose project has no repository is skipped
 with a log line.
 
-The agent commands above passed a live run on 0.1.0 only (claude 2.1.322, codex 0.167.1, kimi
-2.5.2; the codex sandbox differed). On 0.2.0 claude passed a live run on a clone of ci-sandbox; codex needs its own approval settings
+Live runs: claude passed on a clone of ci-sandbox; codex needs its own approval settings
 for the PR step and kimi was not run (login expired); opencode and pi never were. An agent counts as supported after `make smoke AGENT=<name>` (paid, `PAID_OK=1 MAX_USD=1`).
 
 ## Commands
@@ -259,7 +255,7 @@ look like a failure, a loop that costs a run each time); `reopen_status` is not 
 | cleanup | for each closed task with no running run: remove its worktree (`git worktree remove`, which refuses a dirty tree), `git branch -d` (refuses an unmerged branch, so a squashed branch stays). Logs older than `log_days` are removed on every tick, with this module on or off. With the watch on it waits until the watch has seen the PR merged or closed, or the task has no PR link | `[cleanup] enabled` |
 | check | see Commands | command |
 
-The watch never switches auto-merge on and never merges: a human merges (D8). A task leaves the
+The watch never switches auto-merge on and never merges: a human merges (D7). A task leaves the
 watch when its worktree is removed, so the list stays short.
 
 ## Boundaries
@@ -268,13 +264,11 @@ What the daemon never does, whatever the input. Each line gets a test.
 
 - R1: Starts an agent outside `workspace_root`, or with a cwd other than the task's worktree.
 - R2: Touches a task without an `agent:<name>` tag.
-- R5: Puts a shell between itself and the agent.
-- R6: Runs a second instance against the same `workspace_root`.
-- R7: Merges, pushes, or deletes an unmerged branch.
-- R8: Writes the tracker other than `Note`, `Block` and `Reopen`, or without a guarding `Get`.
-- R9: Takes an agent command from anywhere but the central config.
-
-R3 and R4 of 0.1.0 (pipeline transitions, checked result) went away with the result file.
+- R3: Puts a shell between itself and the agent.
+- R4: Runs a second instance against the same `workspace_root`.
+- R5: Merges, pushes, or deletes an unmerged branch.
+- R6: Writes the tracker other than `Note`, `Block` and `Reopen`, or without a guarding `Get`.
+- R7: Takes an agent command from anywhere but the central config.
 
 ## Decisions
 
@@ -282,21 +276,20 @@ R3 and R4 of 0.1.0 (pipeline transitions, checked result) went away with the res
   memory do not matter; Go has `os/exec`, signals and templates in stdlib.
 - D2 TOML config, the only dependency (`github.com/BurntSushi/toml`, MIT). Rejected: JSON (no
   comments), YAML (bigger dependency).
-- D4 The agent writes the tracker itself. Was D3 (the daemon is the only writer). Reason: the
-  owner, 12.11: «это чуть ли не основная фича tix что агент сам работает с трекером». Cost: the
+- D3 The agent writes the tracker itself, the daemon is not its only writer. Reason: the
+  owner, 12.11: an agent working with the tracker itself is close to the main feature of tix. Cost: the
   agent needs write access to the tracker store, git and the network, so codex runs with
   `danger-full-access` and the worktree is a convention, not a sandbox (unchecked: live run); the
-  daemon no longer checks the result, only where the task ended up.
-- D5 The tracker is an interface; tix is the first and only adapter in 0.2.0.
-- D6 Success is read from the tracker after the run, not from a result file or the exit code.
-- D7 The project config cannot name commands (R9).
-- D8 A human merges; the watch only reports. Auto-merge by the agent or the daemon was rejected
+  daemon checks only where the task ended up.
+- D4 The tracker is an interface; tix is the first and only adapter in 0.1.0.
+- D5 Success is read from the tracker after the run, not from the exit code.
+- D6 The project config cannot name commands (R7).
+- D7 A human merges; the watch only reports. Auto-merge by the agent or the daemon was rejected
   for now (`docs/process.md`, Merge). Owner, 12.11.
-- D9 `handoff_status` is `blocked` until tix 0.9 brings a review status; the same release may
+- D8 `handoff_status` is `blocked` until tix 0.9 brings a review status; the same release may
   bring a merging status for the watch. Owner, 12.11.
-- D10 An agent that closes the task itself is a success, though `tix show --json` does not say who
+- D9 An agent that closes the task itself is a success, though `tix show --json` does not say who
   closed it. Rejected: reading the store's git log and moving the task back. Owner, 12.11.
-- D11 Backlog.md is not a second adapter; its support is removed. Owner, 12.11.
 
 ## Acceptance
 
@@ -326,7 +319,7 @@ Tests use the real `tix` binary on a temporary store (`TIX_HOME`), a fake agent 
     higher `max_attempts` fails the dispatch.
 11. One live run per supported agent (claude, codex, kimi) on a throwaway repo: the claim in the
     store carries `tiny-symphony:<agent>:<T-N>`; the owner reads the log. Before the release.
-12. `make ci-check` green; R1, R2, R5-R8 each have a test.
+12. `make ci-check` green; R1-R7 each have a test.
 
 ## Left out
 

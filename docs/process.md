@@ -1,6 +1,6 @@
 # tiny-symphony: process map
 
-0.2.0, 2026-11-12. One task from the board to `main`, across four systems: the tracker
+0.1.0, 2026-11-13. One task from the board to `main`, across four systems: the tracker
 (tix), the daemon, the git repository and GitHub. Who moves what, who writes where, what happens
 when a step fails. Rules of each step: `docs/spec.md`. Facts about GitHub:
 `docs/research/T-704-github-pr-flow.md`.
@@ -88,7 +88,7 @@ the agent reads the comments in `tix show`.
 | 5 | another session took the task first | tix refuses `take` | the agent exits; the task is in_progress with that claim: one note, failed attempt, no move |
 | 4-7 | the human removed the tag, moved the taken task back to open, or someone stole the claim | daemon: next tick | run stopped, no attempt; the human's move stands |
 | 8 | the human moved the task between the run's end and the daemon's write | daemon: fresh read before writing, the task changed | the daemon writes nothing |
-| 7 | the agent closed the task itself | nobody: closed looks the same whoever closed it | success; the review gate was skipped (`docs/spec.md`, D10) |
+| 7 | the agent closed the task itself | nobody: closed looks the same whoever closed it | success; the review gate was skipped (`docs/spec.md`, D9) |
 | 7 | no PR link in `external` | the watch skips the task | cleanup removes the worktree; the unmerged branch stays |
 | 10 | a check failed or the PR conflicts after close | daemon (watch): `statusCheckRollup`, `mergeStateStatus` `DIRTY` | note with the reason, task back to open; the agent fixes it on the same branch; at most `max_reopens` times, then one note |
 | 10 | PR closed without merge | daemon (watch): `state` `CLOSED`, no `mergedAt` | one note; the task stays closed, the branch stays |
@@ -117,8 +117,8 @@ GitHub facts that shape this:
 | B. Daemon at the human's gate | GitHub, after the daemon runs `gh pr merge --auto --squash --match-head-commit <sha>` when the human moves the task to a merging status; where no required check exists, the daemon reads `statusCheckRollup` first | the status move | a required check, or the daemon's own check |
 | C. Human | the human in GitHub | the merge button | nothing |
 
-The owner chose C (`docs/spec.md`, D8): the watch only reports: it never switches auto-merge on and never merges
-(boundary R7). B is the closest to Symphony's "Merging" status. Linear works the other way round:
+The owner chose C (`docs/spec.md`, D7): the watch only reports: it never switches auto-merge on and never merges
+(boundary R5). B is the closest to Symphony's "Merging" status. Linear works the other way round:
 the tracker follows PR events (opened, so In Progress; merged, so Done).
 
 ## Modules and switches
