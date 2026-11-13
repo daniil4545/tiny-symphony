@@ -48,7 +48,7 @@ func reapLeftovers(root string, log *slog.Logger) {
 // housekeeping removes old run logs.
 func (s *sched) housekeeping() {
 	logs, _ := filepath.Glob(filepath.Join(s.cfg.WorkspaceRoot, "*", stateDir, "*.log"))
-	cutoff := time.Now().AddDate(0, 0, -s.cfg.LogDays)
+	cutoff := time.Now().AddDate(0, 0, -s.cfg.Cleanup.LogDays)
 	for _, f := range logs {
 		if fi, e := os.Stat(f); e == nil && fi.ModTime().Before(cutoff) {
 			_ = os.Remove(f)

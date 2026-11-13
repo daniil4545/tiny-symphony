@@ -26,7 +26,6 @@ type Config struct {
 	MaxAgents         int               `toml:"max_agents"`
 	RunTimeoutMinutes int               `toml:"run_timeout_minutes"`
 	MaxAttempts       int               `toml:"max_attempts"`
-	LogDays           int               `toml:"log_days"` // the old place; [cleanup] log_days wins
 	Repos             map[string]string `toml:"repos"`
 	Agents            map[string]Agent  `toml:"agents"`
 	WatchPR           WatchPR           `toml:"watch_pr"`
@@ -103,8 +102,7 @@ func loadConfig(path string) (*Config, error) {
 	if c.MaxAttempts <= 0 {
 		c.MaxAttempts = 3
 	}
-	c.LogDays = cmp.Or(max(c.Cleanup.LogDays, 0), max(c.LogDays, 0), 14)
-	c.Cleanup.LogDays = c.LogDays
+	c.Cleanup.LogDays = cmp.Or(max(c.Cleanup.LogDays, 0), 14)
 	if c.WatchPR.PollMinutes <= 0 {
 		c.WatchPR.PollMinutes = 5
 	}

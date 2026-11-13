@@ -53,7 +53,7 @@ before it. Moving out of in_progress drops the claim, so no separate release is 
 
 Task fields the daemon reads: `id`, `title`, `project`, `status`, `tags`, `claim`, `external`,
 `rank`, `created`, and the `After: T-N` lines of the body. Statuses are compared trimmed and
-lowercased. With tix 0.9 statuses are names with a kind; the daemon takes names from its
+lowercased, so are project names. With tix 0.9 statuses are names with a kind; the daemon takes names from its
 config and needs no kind.
 
 ### Adapter contract

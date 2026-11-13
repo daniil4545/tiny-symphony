@@ -190,6 +190,9 @@ func (s *sched) tick(ctx context.Context) {
 		}
 		name, agent, ok := s.agentFor(t)
 		repo := repos[t.Project]
+		if ok && repo == "" {
+			s.log.Warn("skipped, project has no repository", "task", t.ID, "project", t.Project)
+		}
 		if _, busy := s.running[t.ID]; busy || !ok || repo == "" || live(t) || slices.Contains(t.Tags, "epic") {
 			continue
 		}
