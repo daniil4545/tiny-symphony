@@ -56,7 +56,8 @@ type sched struct {
 	done                 chan outcome
 	failed               int
 	tries                map[string]*tries
-	max                  map[string]int // max_attempts of the project, by task id
+	max                  map[string]int  // max_attempts of the project, by task id
+	noRepo               map[string]bool // tasks already logged as having no repository
 	backoff              []time.Duration
 	trackerPause         time.Duration
 	stopping             bool
@@ -69,7 +70,7 @@ func newSched(cfg *Config, tr Tracker, log *slog.Logger) *sched {
 		timeout: time.Duration(cfg.RunTimeoutMinutes) * time.Minute,
 		grace:   10 * time.Second, trackerPause: 2 * time.Second,
 		running: map[string]*active{}, done: make(chan outcome),
-		tries: map[string]*tries{}, max: map[string]int{}, backoff: []time.Duration{time.Minute, 5 * time.Minute, 15 * time.Minute},
+		tries: map[string]*tries{}, max: map[string]int{}, noRepo: map[string]bool{}, backoff: []time.Duration{time.Minute, 5 * time.Minute, 15 * time.Minute},
 	}
 }
 
@@ -190,7 +191,8 @@ func (s *sched) tick(ctx context.Context) {
 		}
 		name, agent, ok := s.agentFor(t)
 		repo := repos[t.Project]
-		if ok && repo == "" {
+		if ok && repo == "" && !s.noRepo[t.ID] {
+			s.noRepo[t.ID] = true
 			s.log.Warn("skipped, project has no repository", "task", t.ID, "project", t.Project)
 		}
 		if _, busy := s.running[t.ID]; busy || !ok || repo == "" || live(t) || slices.Contains(t.Tags, "epic") {
