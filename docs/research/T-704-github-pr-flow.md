@@ -1,7 +1,7 @@
 # T-704 GitHub PR flow
 
 Checked 2026-11-12: docs and READMEs read, the `gh` source read at `233b470`, nothing run against
-real PRs. Question: which GitHub practices go into the process map of 0.2.0, so that the daemon
+real PRs. Question: which GitHub practices go into the process map, so that the daemon
 only polls the tracker while the merge and the task status follow.
 
 ## Verdict
@@ -75,19 +75,19 @@ it does not remove the need for human review
 
 ## Tracker adapters
 
-Checked 2026-11-12: Backlog.md 1.55.3 from `--help`; Linear, GitHub and Jira from their API docs.
+Checked 2026-11-12: Linear, GitHub and Jira from their API docs.
 "Known, not read" marks what no source in this round confirmed.
 
-| Capability | Backlog.md | Linear | GitHub Issues | Jira Cloud |
-| --- | --- | --- | --- | --- |
-| list by status and label | `task list -s -l` | issue filters ([docs](https://linear.app/developers/filtering)) | known, not read | JQL, not read |
-| dependencies | `--dep`, `--ready` | relations, not read | `blocked_by` ([docs](https://docs.github.com/en/rest/issues/issue-dependencies)) | issue links, not read |
-| holder | assignee, no expiry | delegate of an app, agent sessions ([docs](https://linear.app/developers/agents)) | assignee, not read | assignee, not read |
-| note by a bot | `--comment --comment-author` | comment by the app user ([docs](https://linear.app/developers/agents)) | comment by a GitHub App, not read | not read |
-| status with a reason | `-s` plus `--comment` in one call | not read | only open or closed with `state_reason` ([docs](https://docs.github.com/en/rest/issues/issues)) | transitions ([docs](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issues/)) |
-| link field | `--ref` | attachments ([docs](https://linear.app/developers/attachments)) | linked PRs, not read | remote links ([docs](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-remote-links/)) |
-| project to repository | the repository that holds the backlog | only repository suggestions for an agent session ([docs](https://linear.app/developers/agent-interaction)) | the repository itself | not read |
-| polling budget | local | 2500 requests an hour per API key ([docs](https://linear.app/developers/rate-limiting)) | 5000 an hour for a GitHub App ([docs](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)) | points per hour, 429 ([docs](https://developer.atlassian.com/cloud/jira/platform/rate-limiting/)) |
+| Capability | Linear | GitHub Issues | Jira Cloud |
+| --- | --- | --- | --- |
+| list by status and label | issue filters ([docs](https://linear.app/developers/filtering)) | known, not read | JQL, not read |
+| dependencies | relations, not read | `blocked_by` ([docs](https://docs.github.com/en/rest/issues/issue-dependencies)) | issue links, not read |
+| holder | delegate of an app, agent sessions ([docs](https://linear.app/developers/agents)) | assignee, not read | assignee, not read |
+| note by a bot | comment by the app user ([docs](https://linear.app/developers/agents)) | comment by a GitHub App, not read | not read |
+| status with a reason | not read | only open or closed with `state_reason` ([docs](https://docs.github.com/en/rest/issues/issues)) | transitions ([docs](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issues/)) |
+| link field | attachments ([docs](https://linear.app/developers/attachments)) | linked PRs, not read | remote links ([docs](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-remote-links/)) |
+| project to repository | only repository suggestions for an agent session ([docs](https://linear.app/developers/agent-interaction)) | the repository itself | not read |
+| polling budget | 2500 requests an hour per API key ([docs](https://linear.app/developers/rate-limiting)) | 5000 an hour for a GitHub App ([docs](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)) | points per hour, 429 ([docs](https://developer.atlassian.com/cloud/jira/platform/rate-limiting/)) |
 
 Differences the contract absorbs: only tix has an expiring claim; no tracker but tix maps a project
 to a repository path; GitHub Issues keeps statuses as labels or a Projects field. A poll every 30 s

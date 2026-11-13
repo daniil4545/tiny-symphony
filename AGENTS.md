@@ -3,7 +3,7 @@
 ## Project
 
 A small daemon that runs a coding agent CLI per tracker task in a git worktree. Single user, own
-machine. The code is 0.2.0, a connector to tix: the agent writes the tracker itself, the daemon
+machine. It is a connector to tix: the agent writes the tracker itself, the daemon
 only finds tagged tasks, runs agents and says when something went wrong. `docs/spec.md` is the
 canon; the process across tracker, git and GitHub is `docs/process.md`. Read the Philosophy of the
 spec before adding anything. Structure: `docs/architecture.md`. Tasks are in tix (`tix ctx`),
