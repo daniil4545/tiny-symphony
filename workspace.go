@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -22,13 +23,14 @@ func pathID(id string) string {
 	return strings.ToUpper(id[:1]) + id[1:]
 }
 
-// branchName is T-<N>-<slug>, used when the worktree is created.
+// branchName is T-<N>-<slug>, used when the worktree is created. A title with no Latin letters or
+// digits gives the slug "task", so the name still matches the T-<N>-* that findWorkspace looks for.
 func branchName(t TrackerTask) string {
 	slug := strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(t.Title), "-"), "-")
 	if len(slug) > 40 {
 		slug = strings.Trim(slug[:40], "-")
 	}
-	return strings.TrimRight(pathID(t.ID)+"-"+slug, "-")
+	return pathID(t.ID) + "-" + cmp.Or(slug, "task")
 }
 
 // findWorkspace is the worktree of the task; "" if none. The name starts with the id and the file

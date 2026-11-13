@@ -148,7 +148,7 @@ func failedOr(writeErr, failed error) error {
 	return failed
 }
 
-// trackerRetry repeats a tracker call made after the agent finished: the paid result is already checked.
+// trackerRetry repeats a tracker read made after the agent finished, so a paid run is not lost to a blip.
 // If it still fails, the error is a failed attempt of the run: errTracker is dropped, so it counts.
 func (s *sched) trackerRetry(f func() error) (err error) {
 	for i := range 3 {
@@ -159,5 +159,5 @@ func (s *sched) trackerRetry(f func() error) (err error) {
 			return err
 		}
 	}
-	return errors.New("writing the result: " + err.Error())
+	return errors.New("reading the task after the run: " + err.Error())
 }

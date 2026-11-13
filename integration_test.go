@@ -64,7 +64,7 @@ func newEnv(t *testing.T, mode string) *env {
 	e.cfg = &Config{
 		Tracker: "tix", WorkspaceRoot: t.TempDir(), Watch: []string{"open"},
 		HandoffStatus: "blocked", BlockedStatus: "blocked", ReopenStatus: "open",
-		RunTimeoutMinutes: 1, PollSeconds: 1, MaxAgents: 2, MaxAttempts: 3, LogDays: 14,
+		RunTimeoutMinutes: 1, PollSeconds: 1, MaxAgents: 2, MaxAttempts: 3, Cleanup: Cleanup{LogDays: 14},
 		Agents: map[string]Agent{"stub": {Cmd: []string{script, "{prompt}"}}},
 	}
 	return e

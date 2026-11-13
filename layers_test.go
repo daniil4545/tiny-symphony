@@ -89,7 +89,7 @@ log_days = 3
 	if c.Repos["toy"] != filepath.Join(home, "Dev/toy") || c.Agents["a"].Cmd[0] != filepath.Join(home, "bin/a") || c.Agents["a"].Cmd[2] != "~/x" {
 		t.Fatalf("%+v", c)
 	}
-	if c.LogDays != 3 || !c.Cleanup.Enabled || c.WatchPR.Enabled || c.WatchPR.PollMinutes != 5 || c.WatchPR.MaxReopens != 2 {
+	if c.Cleanup.LogDays != 3 || !c.Cleanup.Enabled || c.WatchPR.Enabled || c.WatchPR.PollMinutes != 5 || c.WatchPR.MaxReopens != 2 {
 		t.Fatalf("defaults: %+v %+v", c.Cleanup, c.WatchPR)
 	}
 }

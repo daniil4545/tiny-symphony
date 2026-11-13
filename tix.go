@@ -95,7 +95,7 @@ var (
 
 func (j tixJSON) task() (TrackerTask, error) {
 	t := TrackerTask{
-		ID: j.ID, Title: j.Title, Project: j.Project,
+		ID: j.ID, Title: j.Title, Project: norm(j.Project),
 		Status: strings.ToLower(strings.TrimSpace(j.Status)),
 		Tags:   j.Tags, External: j.External, Rank: j.Rank,
 	}
@@ -160,7 +160,7 @@ func (x *Tix) Repos(ctx context.Context) (map[string]string, error) {
 		if len(cols) < 3 || cols[1] == "-" {
 			continue
 		}
-		repos[cols[0]] = cols[1]
+		repos[norm(cols[0])] = cols[1]
 	}
 	return repos, nil
 }
