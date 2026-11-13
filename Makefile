@@ -1,5 +1,4 @@
-# Gate template for a Go project (~/.claude/rules/verification.md); copy into the module root.
-# Needs go and golangci-lint; infra-check and workflows also need uv and node.
+# Checks of the project. Needs go and golangci-lint; infra-check and workflows also need uv and node.
 .PHONY: secrets infra-changed test-guard spec-trace pr-size push-check pr-check build test test-fast vet fmt lint infra-check security workflows ci-check paid-guard smoke
 
 # Scanners are pinned through go run so the machine PATH and CI do not matter.
@@ -15,7 +14,7 @@ build:
 test-fast:
 	go test -short ./... $(if $(RUN),-run $(RUN) -count=1,)
 
-# Step 2: integration tests need git and backlog on PATH.
+# Step 2: integration tests need git and tix on PATH.
 test:
 	go test -count=1 ./... $(if $(RUN),-run $(RUN),)
 
@@ -28,7 +27,6 @@ fmt:
 	golangci-lint fmt
 
 # All static checks: go vet, Go format, golangci-lint (v2.15.0), ruff and shellcheck on own files.
-# In an old project LINT_BASE=main lints only new Go code.
 # ruff format --check is off: all 3 scripts/*.py files fail it; old code is not reformatted.
 GOLANGCI := $(shell command -v golangci-lint 2>/dev/null || echo go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0)
 RUFF := uvx ruff@0.17.2
@@ -74,7 +72,7 @@ test-guard:
 pr-size:
 	scripts/pr-size.py $(if $(BASE),--base $(BASE),)
 
-# Every S<n> and R<n> of docs/spec.md and docs/specs has a test marked `spec: <ID>`.
+# Every S<n> and R<n> of docs/spec.md has a test marked `spec: <ID>`.
 spec-trace:
 	scripts/spec-trace.py
 
@@ -88,7 +86,7 @@ infra-changed:
 push-check: lint infra-changed test-guard secrets test-fast spec-trace
 	@$(MAKE) --no-print-directory test-guard BASE=$${BASE:-$$(git rev-parse -q --verify origin/dev >/dev/null && echo origin/dev || echo dev)}
 
-# PR into main: steps 0-2; the project adds release-smoke (release artifact installed the user's way and run).
+# PR into main: the full check.
 ci-check: lint infra-check security spec-trace test build
 	@$(MAKE) --no-print-directory test-guard BASE=$${BASE:-$$(git rev-parse -q --verify origin/dev >/dev/null && echo origin/dev || echo dev)}
 
@@ -96,8 +94,7 @@ ci-check: lint infra-check security spec-trace test build
 pr-check: lint infra-check secrets spec-trace test-fast build pr-size
 	@$(MAKE) --no-print-directory test-guard BASE=$${BASE:-$$(git rev-parse -q --verify origin/dev >/dev/null && echo origin/dev || echo dev)}
 
-# Step 4 guard: every paid target depends on it; the run reads MAX_USD and stops at the ceiling.
-# A paid run rewrites cassettes: `RECORD=1 go test -tags live -run Live ./...`.
+# Every paid target depends on it. PAID_OK and MAX_USD are a manual consent; nothing enforces the ceiling.
 paid-guard:
 	@test "$$PAID_OK" = 1 || { echo "paid run: set PAID_OK=1 after approval"; exit 1; }
 	@test -n "$$MAX_USD" || { echo "paid run: set MAX_USD"; exit 1; }

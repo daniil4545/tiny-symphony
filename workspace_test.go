@@ -9,11 +9,12 @@ import (
 )
 
 func TestBranchName(t *testing.T) {
-	cases := map[string]Task{
+	cases := map[string]TrackerTask{
 		"T-12-fix-the-bug":               {ID: "T-12", Title: "Fix the  bug!"},
 		"T-3-x":                          {ID: "t-3", Title: "X"},
 		"T-1-a-b":                        {ID: "T-1", Title: "a/../b"},
 		"T-1-" + strings.Repeat("a", 40): {ID: "T-1", Title: strings.Repeat("a", 60)},
+		"T-12-task":                      {ID: "T-12", Title: "Исправить баг"},
 	}
 	for want, task := range cases {
 		if got := branchName(task); got != want {
@@ -53,7 +54,7 @@ func toyRepo(t *testing.T) string {
 
 func TestPrepareWorkspace(t *testing.T) {
 	repo, root := toyRepo(t), t.TempDir()
-	task := Task{ID: "T-1", Title: "Do it"}
+	task := TrackerTask{ID: "T-1", Title: "Do it"}
 
 	dir, branch, err := prepareWorkspace(t.Context(), root, repo, task)
 	if err != nil || branch != "T-1-do-it" || dir != filepath.Join(root, branch) {
@@ -62,16 +63,13 @@ func TestPrepareWorkspace(t *testing.T) {
 	if got := mustRun(t, dir, "branch", "--show-current"); got != branch {
 		t.Fatalf("branch = %q", got)
 	}
-	// The state folder is outside git, and a stale result does not survive into the next run.
-	write(t, filepath.Join(dir, stateDir, "result.json"), "{}", 0o600)
+	// The state folder is outside git.
+	write(t, filepath.Join(dir, stateDir, "log"), "x", 0o600)
 	if got := mustRun(t, dir, "status", "--porcelain"); got != "" {
 		t.Fatalf("worktree is dirty: %q", got)
 	}
 	if _, _, err = prepareWorkspace(t.Context(), root, repo, task); err != nil {
 		t.Fatalf("reuse: %v", err)
-	}
-	if _, err = os.Stat(filepath.Join(dir, stateDir, "result.json")); err == nil {
-		t.Fatal("stale result.json was kept")
 	}
 	ex, _ := os.ReadFile(mustRun(t, dir, "rev-parse", "--path-format=absolute", "--git-path", "info/exclude"))
 	if strings.Count(string(ex), stateDir+"/") != 1 {
@@ -79,19 +77,31 @@ func TestPrepareWorkspace(t *testing.T) {
 	}
 }
 
+// A title with no Latin letters or digits still gives a worktree that is found by id.
+func TestWorkspaceWithNonLatinTitleIsFound(t *testing.T) {
+	repo, root := toyRepo(t), t.TempDir()
+	dir, _, err := prepareWorkspace(t.Context(), root, repo, TrackerTask{ID: "T-12", Title: "Исправить баг"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := findWorkspace(root, "T-12"); err != nil || got != dir {
+		t.Fatalf("findWorkspace = %q, %v; want %q", got, err, dir)
+	}
+}
+
 // spec: Loop
 func TestWorkspaceIsFoundByIdNotTitle(t *testing.T) {
 	repo, root := toyRepo(t), t.TempDir()
-	dir, branch, err := prepareWorkspace(t.Context(), root, repo, Task{ID: "T-1", Title: "Old title"})
+	dir, branch, err := prepareWorkspace(t.Context(), root, repo, TrackerTask{ID: "T-1", Title: "Old title"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	mustRun(t, dir, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "--allow-empty", "-m", "work")
-	dir10, _, err := prepareWorkspace(t.Context(), root, repo, Task{ID: "T-10", Title: "Other"})
+	dir10, _, err := prepareWorkspace(t.Context(), root, repo, TrackerTask{ID: "T-10", Title: "Other"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir2, branch2, err := prepareWorkspace(t.Context(), root, repo, Task{ID: "T-1", Title: "A human renamed it"})
+	dir2, branch2, err := prepareWorkspace(t.Context(), root, repo, TrackerTask{ID: "T-1", Title: "A human renamed it"})
 	if err != nil || dir2 != dir || branch2 != branch || dir10 == dir {
 		t.Fatalf("%s %s %v, want %s %s", dir2, branch2, err, dir, branch)
 	}
@@ -109,7 +119,7 @@ func TestWorkspaceIsFoundByIdNotTitle(t *testing.T) {
 func TestPrepareWorkspaceReusesExistingBranch(t *testing.T) {
 	repo, root := toyRepo(t), t.TempDir()
 	mustRun(t, repo, "branch", "T-1-do-it")
-	if _, _, err := prepareWorkspace(t.Context(), root, repo, Task{ID: "T-1", Title: "Do it"}); err != nil {
+	if _, _, err := prepareWorkspace(t.Context(), root, repo, TrackerTask{ID: "T-1", Title: "Do it"}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -129,18 +139,18 @@ func TestExcludeKeepsUserLine(t *testing.T) {
 // A subtask directory starts with the parent's id; the parent must not take it.
 func TestSubtaskDirIsNotTakenByParent(t *testing.T) {
 	repo, root := toyRepo(t), t.TempDir()
-	sub, _, err := prepareWorkspace(t.Context(), root, repo, Task{ID: "T-1.1", Title: "Part"})
+	sub, _, err := prepareWorkspace(t.Context(), root, repo, TrackerTask{ID: "T-1.1", Title: "Part"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	parent, _, err := prepareWorkspace(t.Context(), root, repo, Task{ID: "T-1", Title: "1 whole"})
+	parent, _, err := prepareWorkspace(t.Context(), root, repo, TrackerTask{ID: "T-1", Title: "1 whole"})
 	if err != nil || parent == sub {
 		t.Fatalf("parent %q sub %q %v", parent, sub, err)
 	}
 	if got, _ := findWorkspace(root, "T-1.1"); got != sub {
 		t.Fatalf("subtask lost its directory: %q", got)
 	}
-	// Directories made before the id file existed are ambiguous: an error, no run.
+	// Directories without an id file are ambiguous: an error, no run.
 	for _, d := range []string{sub, parent} {
 		if err = os.Remove(filepath.Join(d, stateDir, "task-id")); err != nil {
 			t.Fatal(err)

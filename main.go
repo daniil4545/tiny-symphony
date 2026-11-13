@@ -33,10 +33,14 @@ func run() int {
 		return 1
 	}
 	if os.Args[1] == "check" {
-		if checkConfig(ctx, os.Stdout, cfg, filepath.Dir(expandHome(*cfgPath)), NewBacklog(cfg.BacklogDir)) > 0 {
+		if checkConfig(ctx, os.Stdout, cfg, newTracker(cfg, existingDir(cfg))) > 0 {
 			return 1
 		}
 		return 0
+	}
+	if err = startProblems(ctx, cfg, newTracker(cfg, existingDir(cfg))); err != nil {
+		log.Error("config", "err", err)
+		return 1
 	}
 	lock, err := lockWorkspace(cfg.WorkspaceRoot)
 	if err != nil {
@@ -45,81 +49,106 @@ func run() int {
 	}
 	defer func() { _ = lock.Close() }()
 	reapLeftovers(cfg.WorkspaceRoot, log)
-	s := newSched(cfg, filepath.Dir(expandHome(*cfgPath)), NewBacklog(cfg.BacklogDir), log)
+	s := newSched(cfg, newTracker(cfg, cfg.WorkspaceRoot), log)
 	if s.loop(ctx, *once) > 0 && *once {
 		return 1
 	}
 	return 0
 }
 
-// stillOurs reports whether the task still carries the agent label and sits in the status it was taken in.
-func stillOurs(t Task, agent, status string) bool {
-	return t.agentName() == agent && norm(t.Status) == norm(status)
+// existingDir is workspace_root, or the temp dir while it is not created yet: tix needs an existing cwd.
+func existingDir(cfg *Config) string {
+	if _, err := os.Stat(cfg.WorkspaceRoot); err != nil {
+		return os.TempDir()
+	}
+	return cfg.WorkspaceRoot
 }
 
-// runTask does one run. ctx is for the tracker and git; stop ends only the agent.
+// newTracker is tix run in dir, which is outside any git repository, so no list is narrowed to a project.
+func newTracker(cfg *Config, dir string) Tracker {
+	return &Tix{Dir: dir, Actor: "tiny-symphony", Blocked: cfg.BlockedStatus, Reopened: cfg.ReopenStatus, Timeout: time.Minute}
+}
+
+// actorName is the name an agent run writes the tracker under.
+func actorName(agent, id string) string { return "tiny-symphony:" + agent + ":" + id }
+
+// runTask does one run and returns the task as the run ended. ctx is for the tracker and git; stop ends only the agent.
 // The tracker is read and written on a context that a signal does not cancel, so a write is never cut short.
-func (s *sched) runTask(ctx, stop context.Context, t Task, a Agent, p Project, attempt int, lastErr string, l *slog.Logger) (err error) {
-	cfg, configDir, bl := s.cfg, s.configDir, s.bl
-	name, started := t.agentName(), t.Status
-	wctx := context.WithoutCancel(ctx)
-	t, err = bl.Load(wctx, t.ID)
+func (s *sched) runTask(ctx, stop context.Context, t TrackerTask, name string, a Agent, repo string, attempt int, lastErr string, l *slog.Logger) (TrackerTask, error) {
+	wctx, actor := context.WithoutCancel(ctx), actorName(name, t.ID)
+	cfg, err := withProjectLayer(s.cfg, repo) // read at each dispatch; a bad file is a failed attempt
 	if err != nil {
-		return err
+		return t, err
 	}
-	if !stillOurs(t, name, started) {
-		l.Info("skipped", "outcome", "skipped", "reason", "label or status changed since the list")
-		return nil
-	}
-	dir, branch, err := prepareWorkspace(ctx, cfg.WorkspaceRoot, p.Repo, t)
+	t, err = s.tr.Get(wctx, t.ID)
 	if err != nil {
-		return err
+		return t, fmt.Errorf("task %s: %w", t.ID, err)
 	}
-	prompt, err := renderPrompt(promptFile(configDir, t.Status), t, branch, attempt, lastErr)
+	if _, _, ok := s.agentFor(t); !ok || !s.watching(t.Status) || live(t) {
+		l.Info("skipped", "outcome", "skipped", "reason", "tag, status or claim changed since the list")
+		return t, nil
+	}
+	dir, branch, err := prepareWorkspace(ctx, cfg.WorkspaceRoot, repo, t)
 	if err != nil {
-		return fmt.Errorf("prompt: %w", err)
+		return t, err
 	}
-	l.Info("agent starting", "dir", dir, "attempt", attempt)
-	logPath, err := runAgent(stop, cfg.WorkspaceRoot, dir, a, prompt, s.timeout, s.grace)
+	prompt, err := renderPrompt(map[string]any{
+		"id": t.ID, "title": t.Title, "branch": branch, "worktree": dir, "actor": actor,
+		"handoff_status": cfg.HandoffStatus, "attempt": attempt, "last_error": lastErr,
+	}, cfg.PromptAppend)
+	if err != nil {
+		return t, err
+	}
+	l.Info("agent starting", "dir", dir, "attempt", attempt, "actor", actor)
+	logPath, runErr := runAgent(stop, cfg.WorkspaceRoot, dir, a, prompt, min(s.timeout, time.Duration(cfg.RunTimeoutMinutes)*time.Minute), s.grace)
 	if errors.Is(context.Cause(stop), errMoved) {
-		return errMoved
+		return t, errMoved
 	}
-	defer func() {
-		if err != nil {
-			err = fmt.Errorf("%w (log %s)", err, logPath)
-		}
-	}()
-	if err != nil {
-		return fmt.Errorf("agent: %w", err)
+	logRel, _ := filepath.Rel(cfg.WorkspaceRoot, logPath)
+	var now TrackerTask
+	if err = s.trackerRetry(func() (e error) { now, e = s.tr.Get(wctx, t.ID); return }); err != nil {
+		return t, err
 	}
-	res, err := readResult(dir)
-	if err != nil {
-		return err
-	}
-	to, err := checkResult(res, t)
-	if err != nil {
-		return err
-	}
-	if to == "Review" {
-		if err = checkWork(ctx, dir, branch, p, s.timeout); err != nil {
-			return err
-		}
-	}
-	var now Task
-	if err = s.trackerRetry(func() (e error) { now, e = bl.Load(wctx, t.ID); return }); err != nil {
-		return err
-	}
-	if !stillOurs(now, name, started) {
-		return errMoved
-	}
-	if err = s.trackerRetry(func() error { return bl.Apply(wctx, t.ID, res, to) }); err != nil {
-		return err
-	}
-	l.Info("run done", "outcome", "applied", "to", to, "log", logPath)
-	return nil
+	return s.judge(wctx, now, actor, runErr, logRel, l)
 }
 
-// trackerRetry repeats a tracker call made after the agent finished: the paid result is already checked.
+// judge is the outcome table: the tracker state after the run decides, not the exit code.
+func (s *sched) judge(ctx context.Context, now TrackerTask, actor string, runErr error, logRel string, l *slog.Logger) (TrackerTask, error) {
+	reason := "agent exited without handing the task over"
+	if runErr != nil {
+		reason = runErr.Error()
+	}
+	failed := fmt.Errorf("%s; log %s", reason, logRel)
+	switch st := norm(now.Status); {
+	case st != "in_progress" && !s.watching(st):
+		l.Info("run done", "outcome", "success", "status", now.Status, "log", logRel)
+		return now, nil
+	case st != "in_progress":
+		return now, failed
+	case live(now) && now.Claim != actor:
+		err := s.noteThen(ctx, now, fmt.Sprintf("left in_progress by %s; the agent may have missed --as. Log: %s", now.Claim, logRel), nil)
+		return now, failedOr(err, failed)
+	}
+	err := s.noteThen(ctx, now, fmt.Sprintf("%s. Back to %s. Log: %s", reason, s.cfg.ReopenStatus, logRel), func() error { return s.tr.Reopen(ctx, now.ID) })
+	if err == nil {
+		now.Status, now.Claim = s.cfg.ReopenStatus, "" // what the move did, for the guard of a later Block
+	}
+	return now, failedOr(err, failed)
+}
+
+// failedOr is the error of the run after the daemon's writes: a changed task is errMoved (no attempt),
+// a tracker error stays as it is, and a clean write leaves the failed attempt.
+func failedOr(writeErr, failed error) error {
+	switch {
+	case errors.Is(writeErr, errChanged):
+		return errMoved
+	case writeErr != nil:
+		return writeErr
+	}
+	return failed
+}
+
+// trackerRetry repeats a tracker read made after the agent finished, so a paid run is not lost to a blip.
 // If it still fails, the error is a failed attempt of the run: errTracker is dropped, so it counts.
 func (s *sched) trackerRetry(f func() error) (err error) {
 	for i := range 3 {
@@ -130,5 +159,5 @@ func (s *sched) trackerRetry(f func() error) (err error) {
 			return err
 		}
 	}
-	return errors.New("writing the result: " + err.Error())
+	return errors.New("reading the task after the run: " + err.Error())
 }

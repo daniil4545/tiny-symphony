@@ -10,41 +10,40 @@ import (
 	"testing"
 )
 
-// checkEnv builds a config that passes every check: stub agent and gh in a private PATH, a fake repo.
-func checkEnv(t *testing.T) (*Config, string, *Backlog) {
-	t.Helper()
-	bin, cfgDir, repo := t.TempDir(), t.TempDir(), t.TempDir()
-	for _, name := range []string{"stub", "gh", "git"} {
-		write(t, filepath.Join(bin, name), "#!/bin/sh\n", 0o700)
-	}
-	t.Setenv("PATH", bin)
-	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o750); err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range []string{"to-do", "in-progress", "rework"} {
-		write(t, filepath.Join(cfgDir, "prompts", f+".md"), "{{.id}} {{.title}}", 0o600)
-	}
-	cfg := &Config{
-		BacklogDir:    t.TempDir(),
-		WorkspaceRoot: filepath.Join(t.TempDir(), "not", "yet"),
-		Projects:      map[string]Project{"toy": {Repo: repo}},
-		Agents:        map[string]Agent{"stub": {Cmd: []string{"stub", "-p", "{prompt}"}}},
-	}
-	bl := &Backlog{run: func(context.Context, ...string) ([]byte, error) {
-		return []byte(`{"tasks":[]}`), nil
-	}}
-	return cfg, cfgDir, bl
+// listStub is a Tracker whose List gives err; check calls nothing else.
+type listStub struct {
+	Tracker
+	err error
 }
 
-func runCheck(cfg *Config, dir string, bl *Backlog) (int, string) {
+func (l listStub) List(context.Context, []string) ([]TrackerTask, error) { return nil, l.err }
+func (l listStub) Repos(context.Context) (map[string]string, error)      { return map[string]string{}, nil }
+
+// checkEnv builds a config that passes every check: a stub agent in a private PATH.
+func checkEnv(t *testing.T) (*Config, *listStub) {
+	t.Helper()
+	bin := t.TempDir()
+	write(t, filepath.Join(bin, "stub"), "#!/bin/sh\n", 0o700)
+	t.Setenv("PATH", bin)
+	cfg := &Config{
+		Tracker:       "tix",
+		WorkspaceRoot: filepath.Join(t.TempDir(), "not", "yet"),
+		Watch:         []string{"open"},
+		HandoffStatus: "blocked", BlockedStatus: "blocked", ReopenStatus: "open",
+		Agents: map[string]Agent{"stub": {Cmd: []string{"stub", "-p", "{prompt}"}}},
+	}
+	return cfg, &listStub{}
+}
+
+func runCheck(cfg *Config, tr Tracker) (int, string) {
 	var out bytes.Buffer
-	n := checkConfig(context.Background(), &out, cfg, dir, bl)
+	n := checkConfig(context.Background(), &out, cfg, tr)
 	return n, out.String()
 }
 
 func TestCheckAllOK(t *testing.T) {
-	cfg, dir, bl := checkEnv(t)
-	n, out := runCheck(cfg, dir, bl)
+	cfg, tr := checkEnv(t)
+	n, out := runCheck(cfg, tr)
 	if n != 0 || strings.Contains(out, "FAIL") {
 		t.Fatalf("want all ok, got %d:\n%s", n, out)
 	}
@@ -55,43 +54,25 @@ func TestCheckAllOK(t *testing.T) {
 
 func TestCheckFailures(t *testing.T) {
 	cases := map[string]struct {
-		break_ func(cfg *Config, dir string, bl *Backlog)
+		break_ func(cfg *Config, tr *listStub)
 		want   string
 	}{
-		"agent not in PATH": {func(c *Config, _ string, _ *Backlog) {
+		"agent not in PATH": {func(c *Config, _ *listStub) {
 			c.Agents["stub"] = Agent{Cmd: []string{"no-such-agent", "{prompt}"}}
 		}, "FAIL agent stub"},
-		"no {prompt}": {func(c *Config, _ string, _ *Backlog) {
+		"no {prompt}": {func(c *Config, _ *listStub) {
 			c.Agents["stub"] = Agent{Cmd: []string{"stub", "-p"}}
 		}, "cmd has no {prompt}"},
-		"repo is not git": {func(c *Config, _ string, _ *Backlog) {
-			c.Projects["toy"] = Project{Repo: t.TempDir()}
-		}, "is not a git repository"},
-		"no prompt": {func(_ *Config, d string, _ *Backlog) {
-			_ = os.Remove(filepath.Join(d, "prompts", "rework.md"))
-		}, "FAIL prompt"},
-		"no agents": {func(c *Config, _ string, _ *Backlog) {
+		"no agents": {func(c *Config, _ *listStub) {
 			c.Agents = map[string]Agent{}
 		}, "FAIL agents: none configured"},
-		"no projects": {func(c *Config, _ string, _ *Backlog) {
-			c.Projects = map[string]Project{}
-		}, "FAIL projects: none configured"},
-		"gitlab forge without glab": {func(c *Config, _ string, _ *Backlog) {
-			c.Projects["toy"] = Project{Repo: c.Projects["toy"].Repo, Forge: "gitlab"}
-		}, "glab not in PATH"},
-		"unknown forge needs gh": {func(c *Config, _ string, _ *Backlog) {
-			c.Projects["toy"] = Project{Repo: c.Projects["toy"].Repo, Forge: "gitea"}
-			_ = os.Remove(filepath.Join(os.Getenv("PATH"), "gh"))
-		}, "gh not in PATH"},
-		"tracker silent": {func(_ *Config, _ string, b *Backlog) {
-			b.run = func(context.Context, ...string) ([]byte, error) { return nil, errors.New("boom") }
-		}, "FAIL tracker"},
+		"tracker silent": {func(_ *Config, tr *listStub) { tr.err = errors.New("boom") }, "FAIL tracker tix"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			cfg, dir, bl := checkEnv(t)
-			tc.break_(cfg, dir, bl)
-			n, out := runCheck(cfg, dir, bl)
+			cfg, tr := checkEnv(t)
+			tc.break_(cfg, tr)
+			n, out := runCheck(cfg, tr)
 			if n != 1 || !strings.Contains(out, tc.want) {
 				t.Fatalf("want 1 failure with %q, got %d:\n%s", tc.want, n, out)
 			}
@@ -107,10 +88,77 @@ func TestCheckRootNotWritable(t *testing.T) {
 	if err := os.Chmod(dir, 0o500); err != nil {
 		t.Fatal(err)
 	}
-	cfg, cfgDir, bl := checkEnv(t)
+	cfg, tr := checkEnv(t)
 	cfg.WorkspaceRoot = filepath.Join(dir, "work")
-	n, out := runCheck(cfg, cfgDir, bl)
+	n, out := runCheck(cfg, tr)
 	if n != 1 || !strings.Contains(out, "is not writable") {
 		t.Fatalf("want 1 failure, got %d:\n%s", n, out)
+	}
+}
+
+// spec: S4
+// Acceptance 10: each rule fails check and stops run.
+func TestCheckRules(t *testing.T) {
+	cases := map[string]struct {
+		break_ func(cfg *Config)
+		want   string
+	}{
+		"watch empty":           {func(c *Config) { c.Watch = nil }, "watch is empty"},
+		"watch unknown status":  {func(c *Config) { c.Watch = []string{"open", "todo"} }, `"todo" is not a tix status`},
+		"watch has handoff":     {func(c *Config) { c.Watch = []string{"open", "blocked"}; c.HandoffStatus = "blocked" }, "watch contains"},
+		"watch has blocked":     {func(c *Config) { c.Watch = []string{"open", "idea"}; c.BlockedStatus = "idea" }, "watch contains"},
+		"watch has in_progress": {func(c *Config) { c.Watch = []string{"open", "in_progress"} }, "watch contains"},
+		"reopen not in watch":   {func(c *Config) { c.ReopenStatus = "idea" }, "reopen_status"},
+		"root in git repo": {func(c *Config) {
+			repo := t.TempDir()
+			write(t, filepath.Join(repo, ".git"), "", 0o600)
+			c.WorkspaceRoot = filepath.Join(repo, "work")
+		}, "inside the git repository"},
+		"root in project": {func(c *Config) {
+			c.Repos = map[string]string{"p": filepath.Dir(c.WorkspaceRoot)}
+		}, "inside the project path"},
+		"space in path": {func(c *Config) { c.Repos = map[string]string{"p": "/a b/c"} }, "has a space"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			cfg, tr := checkEnv(t)
+			cfg.HandoffStatus, cfg.BlockedStatus, cfg.ReopenStatus = "blocked", "closed", "open"
+			tc.break_(cfg)
+			if n, out := runCheck(cfg, tr); n < 1 || !strings.Contains(out, tc.want) {
+				t.Fatalf("check: want %q, got %d:\n%s", tc.want, n, out)
+			}
+			if err := startProblems(t.Context(), cfg, tr); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("run must refuse with %q, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
+// check prints the merged config of every project and fails on a bad project file.
+// With the PR watch on, check needs gh on PATH; with it off, gh is not looked for.
+func TestCheckGhForWatch(t *testing.T) {
+	cfg, tr := checkEnv(t)
+	if n, out := runCheck(cfg, tr); n != 0 || strings.Contains(out, "gh") {
+		t.Fatalf("watch off: got %d:\n%s", n, out)
+	}
+	cfg.WatchPR.Enabled = true
+	if n, out := runCheck(cfg, tr); n != 1 || !strings.Contains(out, "FAIL gh for [watch_pr]") {
+		t.Fatalf("watch on, no gh: got %d:\n%s", n, out)
+	}
+}
+
+func TestCheckPrintsProjects(t *testing.T) {
+	cfg, tr := checkEnv(t)
+	cfg.HandoffStatus, cfg.BlockedStatus, cfg.ReopenStatus = "blocked", "closed", "open"
+	cfg.MaxAttempts, cfg.RunTimeoutMinutes, cfg.PromptAppend = 3, 60, "central"
+	good, bad := t.TempDir(), t.TempDir()
+	write(t, filepath.Join(good, ".tiny-symphony.toml"), "prompt_append = \"mine\"\nmax_attempts = 2\n", 0o600)
+	write(t, filepath.Join(bad, ".tiny-symphony.toml"), "max_attempts = 10\n", 0o600)
+	cfg.Repos = map[string]string{"good": good, "bad": bad, "plain": t.TempDir()}
+	n, out := runCheck(cfg, tr)
+	t.Log("\n" + out)
+	if n != 1 || !strings.Contains(out, `max_attempts=2 run_timeout_minutes=60 prompt_append="central\nmine"`) ||
+		!strings.Contains(out, "FAIL project bad") || !strings.Contains(out, "ok   project plain") {
+		t.Fatalf("got %d:\n%s", n, out)
 	}
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -22,13 +23,14 @@ func pathID(id string) string {
 	return strings.ToUpper(id[:1]) + id[1:]
 }
 
-// branchName is T-<N>-<slug>, used when the worktree is created.
-func branchName(t Task) string {
+// branchName is T-<N>-<slug>, used when the worktree is created. A title with no Latin letters or
+// digits gives the slug "task", so the name still matches the T-<N>-* that findWorkspace looks for.
+func branchName(t TrackerTask) string {
 	slug := strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(t.Title), "-"), "-")
 	if len(slug) > 40 {
 		slug = strings.Trim(slug[:40], "-")
 	}
-	return strings.TrimRight(pathID(t.ID)+"-"+slug, "-")
+	return pathID(t.ID) + "-" + cmp.Or(slug, "task")
 }
 
 // findWorkspace is the worktree of the task; "" if none. The name starts with the id and the file
@@ -69,8 +71,8 @@ func git(ctx context.Context, dir string, args ...string) (string, error) {
 	return strings.TrimSpace(out.String()), nil
 }
 
-// prepareWorkspace adds the task's worktree under root, or reuses it, and clears the previous result.
-func prepareWorkspace(ctx context.Context, root, repo string, t Task) (dir, branch string, err error) {
+// prepareWorkspace adds the task's worktree under root, or reuses it.
+func prepareWorkspace(ctx context.Context, root, repo string, t TrackerTask) (dir, branch string, err error) {
 	if dir, err = findWorkspace(root, t.ID); err != nil {
 		return "", "", err
 	}
@@ -99,9 +101,6 @@ func prepareWorkspace(ctx context.Context, root, repo string, t Task) (dir, bran
 	}
 	if err = excludeStateDir(ctx, dir); err != nil {
 		return "", "", err
-	}
-	if err = os.Remove(filepath.Join(dir, stateDir, "result.json")); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return "", "", fmt.Errorf("clear result: %w", err)
 	}
 	return dir, branch, nil
 }

@@ -28,9 +28,14 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      # The integration tests run the real backlog CLI; the version is the one the code was written against.
-      - name: install backlog
-        run: npm install -g backlog.md@1.55.3
+      # The tix adapter tests run the real tix CLI; a release binary, checked against its sum.
+      - name: install tix
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/tix.tgz" https://github.com/daniil4545/tix/releases/download/v0.8.1/tix_0.8.1_linux_amd64.tar.gz
+          echo "4b010c427c143e447547fa1e21f6f329803ca9bd26cd28fed85ceb25ea8bbf2b  $RUNNER_TEMP/tix.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/tix.tgz" -C "$RUNNER_TEMP" tix
+          sudo install "$RUNNER_TEMP/tix" /usr/local/bin/tix
+          tix --version
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.15.0
