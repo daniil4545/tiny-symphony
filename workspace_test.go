@@ -14,6 +14,7 @@ func TestBranchName(t *testing.T) {
 		"T-3-x":                          {ID: "t-3", Title: "X"},
 		"T-1-a-b":                        {ID: "T-1", Title: "a/../b"},
 		"T-1-" + strings.Repeat("a", 40): {ID: "T-1", Title: strings.Repeat("a", 60)},
+		"T-12-task":                      {ID: "T-12", Title: "Исправить баг"},
 	}
 	for want, task := range cases {
 		if got := branchName(task); got != want {
@@ -73,6 +74,18 @@ func TestPrepareWorkspace(t *testing.T) {
 	ex, _ := os.ReadFile(mustRun(t, dir, "rev-parse", "--path-format=absolute", "--git-path", "info/exclude"))
 	if strings.Count(string(ex), stateDir+"/") != 1 {
 		t.Fatalf("exclude: %q", ex)
+	}
+}
+
+// A title with no Latin letters or digits still gives a worktree that is found by id.
+func TestWorkspaceWithNonLatinTitleIsFound(t *testing.T) {
+	repo, root := toyRepo(t), t.TempDir()
+	dir, _, err := prepareWorkspace(t.Context(), root, repo, TrackerTask{ID: "T-12", Title: "Исправить баг"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := findWorkspace(root, "T-12"); err != nil || got != dir {
+		t.Fatalf("findWorkspace = %q, %v; want %q", got, err, dir)
 	}
 }
 
